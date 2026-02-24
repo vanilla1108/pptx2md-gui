@@ -216,8 +216,13 @@ def build_ppt_config(
     output_path = out_dir / f"{stem}.md"
     output_path = _resolve_conflict(output_path)
 
-    # 确定图片目录
-    if params.get("image_dir"):
+    # PPT 专属图片提取开关（独立于 .pptx 的 disable_image）
+    ppt_extract_images = params.get("ppt_extract_images", True)
+
+    # PPT 专属图片目录：优先 ppt_image_dir，回退 image_dir，最终回退 out_dir/img
+    if params.get("ppt_image_dir"):
+        image_dir = str(Path(params["ppt_image_dir"]))
+    elif params.get("image_dir"):
         image_dir = str(Path(params["image_dir"]))
     else:
         image_dir = str(out_dir / "img")
@@ -227,7 +232,7 @@ def build_ppt_config(
         output_path=str(output_path),
         debug=params.get("ppt_debug", False),
         ui=params.get("ppt_ui", True),
-        extract_images=not params.get("disable_image", False),
+        extract_images=ppt_extract_images,
         image_dir=image_dir,
         table_header=params.get("ppt_table_header", "first-row"),
     )

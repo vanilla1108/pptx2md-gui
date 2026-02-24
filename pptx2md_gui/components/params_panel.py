@@ -165,7 +165,7 @@ class ParamsPanel(ctk.CTkScrollableFrame):
 
     def _create_image_options(self):
         """创建图片选项分组。"""
-        content = self._create_group_frame("图片选项")
+        content = self._create_group_frame("图片选项", badge_tip="仅对 .pptx 文件生效")
 
         # 复选框行
         check_frame = ctk.CTkFrame(content, fg_color="transparent")
@@ -226,7 +226,7 @@ class ParamsPanel(ctk.CTkScrollableFrame):
 
     def _create_content_options(self):
         """创建内容处理选项分组。"""
-        content = self._create_group_frame("内容处理")
+        content = self._create_group_frame("内容处理", badge_tip="仅对 .pptx 文件生效")
         
         # 使用 Grid 布局实现两列对齐
         content.grid_columnconfigure(0, weight=1)
@@ -350,6 +350,7 @@ class ParamsPanel(ctk.CTkScrollableFrame):
                                          badge_tip="仅对 .ppt 文件生效，需要 Windows + PowerPoint")
 
         self._ppt_widgets = []  # 收集可交互控件，用于灰置
+        self._ppt_group_enabled = False
 
         # 调试日志
         self.ppt_debug_var = ctk.BooleanVar(value=False)
@@ -388,14 +389,62 @@ class ParamsPanel(ctk.CTkScrollableFrame):
         self._ppt_widgets.append(self.ppt_table_header_combo)
         self._tip(self.ppt_table_header_combo, "first-row: 首行作表头 / empty: 所有行作数据")
 
+        # --- 图片提取 ---
+        self.ppt_extract_images_var = ctk.BooleanVar(value=True)
+        self.ppt_extract_images_cb = ctk.CTkCheckBox(
+            group, text="提取图片", variable=self.ppt_extract_images_var,
+            font=ctk.CTkFont(size=13),
+            command=self._on_ppt_extract_images_changed,
+        )
+        self.ppt_extract_images_cb.pack(anchor="w", padx=15, pady=(5, 5))
+        self._ppt_widgets.append(self.ppt_extract_images_cb)
+        self._tip(self.ppt_extract_images_cb,
+                  "是否从 PPT 中提取图片（独立于上方 .pptx 图片选项）")
+
+        # PPT 图片目录
+        ppt_img_frame = ctk.CTkFrame(group, fg_color="transparent")
+        ppt_img_frame.pack(fill="x", padx=15, pady=(0, 10))
+        self.ppt_image_dir_label = ctk.CTkLabel(
+            ppt_img_frame, text="图片目录:", width=80, anchor="w",
+            font=ctk.CTkFont(size=13),
+        )
+        self.ppt_image_dir_label.pack(side="left")
+        self.ppt_image_dir_var = ctk.StringVar()
+        self.ppt_image_dir_entry = ctk.CTkEntry(
+            ppt_img_frame, textvariable=self.ppt_image_dir_var, width=160,
+        )
+        self.ppt_image_dir_entry.pack(side="left", fill="x", expand=True, padx=5)
+        self.ppt_image_dir_btn = ctk.CTkButton(
+            ppt_img_frame,
+            text="浏览",
+            width=60,
+            fg_color=theme.BTN_NEUTRAL_BG,
+            hover_color=theme.BTN_NEUTRAL_HOVER,
+            text_color=theme.BTN_NEUTRAL_TEXT,
+            command=self._browse_ppt_image_dir,
+        )
+        self.ppt_image_dir_btn.pack(side="left")
+        self._ppt_widgets.extend([
+            self.ppt_image_dir_label,
+            self.ppt_image_dir_entry,
+            self.ppt_image_dir_btn,
+        ])
+        ppt_img_dir_tip = 'PPT 图片保存目录，留空则默认输出到"输出目录/img"'
+        self._tip(self.ppt_image_dir_label, ppt_img_dir_tip)
+        self._tip(self.ppt_image_dir_entry, ppt_img_dir_tip)
+        self._tip(self.ppt_image_dir_btn, ppt_img_dir_tip)
+
         # 初始灰置
         self.set_ppt_group_enabled(False)
 
     def set_ppt_group_enabled(self, enabled: bool):
         """启用/禁用 PPT 参数组的所有子控件。"""
-        state = "normal" if enabled else "disabled"
+        self._ppt_group_enabled = bool(enabled)
+        state = "normal" if self._ppt_group_enabled else "disabled"
         for widget in self._ppt_widgets:
             widget.configure(state=state)
+        # 恢复子联动状态（分组禁用时保持禁用）
+        self._on_ppt_extract_images_changed()
 
     def _browse_output_dir(self):
         path = filedialog.askdirectory(title="选择输出目录")
@@ -477,6 +526,21 @@ class ParamsPanel(ctk.CTkScrollableFrame):
         self.image_dir_btn.configure(state=state)
         self.image_width_entry.configure(state=state)
 
+    def _on_ppt_extract_images_changed(self):
+        """PPT 图片提取 checkbox 联动：禁用时灰置图片目录。"""
+        if not getattr(self, "_ppt_group_enabled", False):
+            state = "disabled"
+        else:
+            state = "normal" if self.ppt_extract_images_var.get() else "disabled"
+        self.ppt_image_dir_label.configure(state=state)
+        self.ppt_image_dir_entry.configure(state=state)
+        self.ppt_image_dir_btn.configure(state=state)
+
+    def _browse_ppt_image_dir(self):
+        path = filedialog.askdirectory(title="选择 PPT 图片目录")
+        if path:
+            self.ppt_image_dir_var.set(path)
+
     def get_params(self) -> Dict[str, Any]:
         """收集所有参数值。"""
         return {
@@ -503,6 +567,8 @@ class ParamsPanel(ctk.CTkScrollableFrame):
             "ppt_debug": self.ppt_debug_var.get(),
             "ppt_ui": not self.ppt_no_ui_var.get(),
             "ppt_table_header": "first-row" if "首行" in self.ppt_table_header_var.get() else "empty",
+            "ppt_extract_images": self.ppt_extract_images_var.get(),
+            "ppt_image_dir": self.ppt_image_dir_var.get(),
         }
 
     def set_params(self, params: Dict[str, Any]):
@@ -564,6 +630,11 @@ class ParamsPanel(ctk.CTkScrollableFrame):
         if "ppt_table_header" in params:
             th_map = {"first-row": "首行作为标题", "empty": "空标题行"}
             self.ppt_table_header_var.set(th_map.get(params["ppt_table_header"], "首行作为标题"))
+        if "ppt_extract_images" in params:
+            self.ppt_extract_images_var.set(params["ppt_extract_images"])
+            self._on_ppt_extract_images_changed()
+        if "ppt_image_dir" in params:
+            self.ppt_image_dir_var.set(params["ppt_image_dir"])
 
     def reset_to_defaults(self):
         """将所有参数重置为默认值。"""
@@ -589,3 +660,6 @@ class ParamsPanel(ctk.CTkScrollableFrame):
         self.ppt_debug_var.set(False)
         self.ppt_no_ui_var.set(False)
         self.ppt_table_header_var.set("首行作为标题")
+        self.ppt_extract_images_var.set(True)
+        self.ppt_image_dir_var.set("")
+        self._on_ppt_extract_images_changed()

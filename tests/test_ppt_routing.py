@@ -338,3 +338,51 @@ class TestCliRouting:
         captured = capsys.readouterr()
         assert "--page" in captured.err
         assert "--try-multi-column" in captured.err
+
+
+class TestGuiBuildPptConfig:
+    """GUI config_bridge.build_ppt_config 测试。"""
+
+    def test_ppt_extract_images_independent(self, tmp_path):
+        """ppt_extract_images 独立于 disable_image。"""
+        from pptx2md_gui.services.config_bridge import build_ppt_config
+        params = {
+            "disable_image": True,
+            "ppt_extract_images": True,
+        }
+        cfg = build_ppt_config(tmp_path / "test.ppt", params)
+        assert cfg.extract_images is True
+
+    def test_ppt_extract_images_false(self, tmp_path):
+        """ppt_extract_images=False 映射到 extract_images=False。"""
+        from pptx2md_gui.services.config_bridge import build_ppt_config
+        params = {"ppt_extract_images": False}
+        cfg = build_ppt_config(tmp_path / "test.ppt", params)
+        assert cfg.extract_images is False
+
+    def test_ppt_image_dir_takes_priority(self, tmp_path):
+        """ppt_image_dir 优先于 image_dir。"""
+        from pptx2md_gui.services.config_bridge import build_ppt_config
+        params = {
+            "image_dir": str(tmp_path / "generic_img"),
+            "ppt_image_dir": str(tmp_path / "ppt_img"),
+        }
+        cfg = build_ppt_config(tmp_path / "test.ppt", params)
+        assert cfg.image_dir == str(tmp_path / "ppt_img")
+
+    def test_ppt_image_dir_fallback_to_image_dir(self, tmp_path):
+        """ppt_image_dir 为空时回退到 image_dir。"""
+        from pptx2md_gui.services.config_bridge import build_ppt_config
+        params = {
+            "image_dir": str(tmp_path / "fallback_img"),
+            "ppt_image_dir": "",
+        }
+        cfg = build_ppt_config(tmp_path / "test.ppt", params)
+        assert cfg.image_dir == str(tmp_path / "fallback_img")
+
+    def test_ppt_image_dir_fallback_to_default(self, tmp_path):
+        """两个 image_dir 都为空时回退到 out_dir/img。"""
+        from pptx2md_gui.services.config_bridge import build_ppt_config
+        params = {}
+        cfg = build_ppt_config(tmp_path / "test.ppt", params)
+        assert cfg.image_dir == str(tmp_path / "img")

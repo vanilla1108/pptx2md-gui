@@ -1185,7 +1185,7 @@ def _extract_ppt_content_inner(config, cancel_event,
         output_path = os.path.join(ppt_dir, base_name + ".md")
         output_path = get_unique_output_path(output_path)
 
-    image_ctx = _build_image_extract_context(output_path, extract_images=extract_images, image_dir=image_dir)
+    image_ctx = _build_image_extract_context(output_path, extract_images=config.extract_images, image_dir=config.image_dir)
     if image_ctx.get("enabled"):
         try:
             os.makedirs(image_ctx["dir"], exist_ok=True)
