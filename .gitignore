@@ -23,6 +23,7 @@ venv/
 CLAUDE.md
 AGENTS.md
 GEMINI.md
+docs/
 
 # Test Data (large binary files)
 test_pptx/

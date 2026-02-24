@@ -71,8 +71,8 @@ class App(DnDCompatibleCTk):
         # 为 GUI 设置带队列处理器的日志系统
         self._log_handler = QueueLogHandler(self._log_queue)
         setup_logging(compat_tqdm=False, external_handlers=[self._log_handler])
-        LOGGER.info("Python executable: %s", sys.executable)
-        LOGGER.info("Loaded pptx2md from: %s", getattr(pptx2md, "__file__", "unknown"))
+        if getattr(pptx2md, "__file__", None) is None:
+            LOGGER.warning("无法定位 pptx2md 模块路径，转换功能可能异常")
 
         # 构建界面
         self._setup_ui()
