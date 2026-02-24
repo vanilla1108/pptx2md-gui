@@ -37,10 +37,7 @@ class ParamsPanel(ctk.CTkScrollableFrame):
         # 输出设置分组
         self._create_output_settings()
 
-        # 图片选项分组
-        self._create_image_options()
-
-        # 内容处理分组
+        # 内容处理分组（含图片选项）
         self._create_content_options()
 
         # 高级选项分组
@@ -163,67 +160,6 @@ class ParamsPanel(ctk.CTkScrollableFrame):
         )
         self.format_segment.pack(side="left", padx=5)
 
-    def _create_image_options(self):
-        """创建图片选项分组。"""
-        content = self._create_group_frame("图片选项", badge_tip="仅对 .pptx 文件生效")
-
-        # 复选框行
-        check_frame = ctk.CTkFrame(content, fg_color="transparent")
-        check_frame.pack(fill="x", pady=3)
-
-        self.disable_image_var = ctk.BooleanVar()
-        self.disable_image_cb = ctk.CTkCheckBox(
-            check_frame,
-            text="禁用图片提取",
-            variable=self.disable_image_var,
-            command=self._on_disable_image_changed,
-        )
-        self.disable_image_cb.pack(side="left", padx=(0, 20))
-
-        self.disable_wmf_var = ctk.BooleanVar()
-        self.disable_wmf_cb = ctk.CTkCheckBox(
-            check_frame, text="禁用 WMF 转换", variable=self.disable_wmf_var
-        )
-        self.disable_wmf_cb.pack(side="left")
-
-        # 图片目录
-        img_dir_frame = ctk.CTkFrame(content, fg_color="transparent")
-        img_dir_frame.pack(fill="x", pady=3)
-
-        self.image_dir_label = ctk.CTkLabel(img_dir_frame, text="图片目录:", width=80, anchor="w")
-        self.image_dir_label.pack(side="left")
-        self.image_dir_var = ctk.StringVar()
-        self.image_dir_entry = ctk.CTkEntry(
-            img_dir_frame, textvariable=self.image_dir_var, width=200
-        )
-        self.image_dir_entry.pack(side="left", fill="x", expand=True, padx=5)
-        self.image_dir_btn = ctk.CTkButton(
-            img_dir_frame,
-            text="浏览",
-            width=60,
-            fg_color=theme.BTN_NEUTRAL_BG,
-            hover_color=theme.BTN_NEUTRAL_HOVER,
-            text_color=theme.BTN_NEUTRAL_TEXT,
-            command=self._browse_image_dir,
-        )
-        self.image_dir_btn.pack(side="left")
-
-        # 图片宽度
-        width_frame = ctk.CTkFrame(content, fg_color="transparent")
-        width_frame.pack(fill="x", pady=3)
-
-        self.image_width_label = ctk.CTkLabel(width_frame, text="图片宽度:", width=80, anchor="w")
-        self.image_width_label.pack(side="left")
-        self.image_width_var = ctk.StringVar()
-        self.image_width_entry = ctk.CTkEntry(
-            width_frame,
-            textvariable=self.image_width_var,
-            width=100,
-            placeholder_text="留空则不限制",
-        )
-        self.image_width_entry.pack(side="left", padx=5)
-        ctk.CTkLabel(width_frame, text="px").pack(side="left")
-
     def _create_content_options(self):
         """创建内容处理选项分组。"""
         content = self._create_group_frame("内容处理", badge_tip="仅对 .pptx 文件生效")
@@ -294,9 +230,81 @@ class ParamsPanel(ctk.CTkScrollableFrame):
         )
         self.min_block_size_entry.pack(side="left", padx=5)
 
+        # ── 分隔线 + 图片选项子区域 ──
+        separator = ctk.CTkFrame(
+            content, height=1, fg_color=theme.BORDER_COLOR,
+        )
+        separator.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(10, 5))
+
+        img_subtitle = ctk.CTkLabel(
+            content,
+            text="图片选项",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            anchor="w",
+            text_color=theme.TEXT_MUTED,
+        )
+        img_subtitle.grid(row=5, column=0, columnspan=2, sticky="w", pady=(2, 5))
+
+        # 复选框行：禁用图片提取 + 禁用 WMF 转换
+        img_check_frame = ctk.CTkFrame(content, fg_color="transparent")
+        img_check_frame.grid(row=6, column=0, columnspan=2, sticky="w", pady=3)
+
+        self.disable_image_var = ctk.BooleanVar()
+        self.disable_image_cb = ctk.CTkCheckBox(
+            img_check_frame,
+            text="禁用图片提取",
+            variable=self.disable_image_var,
+            command=self._on_disable_image_changed,
+        )
+        self.disable_image_cb.pack(side="left", padx=(0, 20))
+
+        self.disable_wmf_var = ctk.BooleanVar()
+        self.disable_wmf_cb = ctk.CTkCheckBox(
+            img_check_frame, text="禁用 WMF 转换", variable=self.disable_wmf_var
+        )
+        self.disable_wmf_cb.pack(side="left")
+
+        # 图片目录
+        img_dir_frame = ctk.CTkFrame(content, fg_color="transparent")
+        img_dir_frame.grid(row=7, column=0, columnspan=2, sticky="ew", pady=3)
+
+        self.image_dir_label = ctk.CTkLabel(img_dir_frame, text="图片目录:", width=80, anchor="w")
+        self.image_dir_label.pack(side="left")
+        self.image_dir_var = ctk.StringVar()
+        self.image_dir_entry = ctk.CTkEntry(
+            img_dir_frame, textvariable=self.image_dir_var, width=200
+        )
+        self.image_dir_entry.pack(side="left", fill="x", expand=True, padx=5)
+        self.image_dir_btn = ctk.CTkButton(
+            img_dir_frame,
+            text="浏览",
+            width=60,
+            fg_color=theme.BTN_NEUTRAL_BG,
+            hover_color=theme.BTN_NEUTRAL_HOVER,
+            text_color=theme.BTN_NEUTRAL_TEXT,
+            command=self._browse_image_dir,
+        )
+        self.image_dir_btn.pack(side="left")
+
+        # 图片宽度
+        img_width_frame = ctk.CTkFrame(content, fg_color="transparent")
+        img_width_frame.grid(row=8, column=0, columnspan=2, sticky="w", pady=3)
+
+        self.image_width_label = ctk.CTkLabel(img_width_frame, text="图片宽度:", width=80, anchor="w")
+        self.image_width_label.pack(side="left")
+        self.image_width_var = ctk.StringVar()
+        self.image_width_entry = ctk.CTkEntry(
+            img_width_frame,
+            textvariable=self.image_width_var,
+            width=100,
+            placeholder_text="留空则不限制",
+        )
+        self.image_width_entry.pack(side="left", padx=5)
+        ctk.CTkLabel(img_width_frame, text="px").pack(side="left")
+
     def _create_advanced_options(self):
         """创建高级选项分组。"""
-        content = self._create_group_frame("高级选项")
+        content = self._create_group_frame("高级选项", badge_tip="仅对 .pptx 文件生效")
 
         # 多列布局检测
         self.try_multi_column_var = ctk.BooleanVar()
@@ -522,8 +530,10 @@ class ParamsPanel(ctk.CTkScrollableFrame):
     def _on_disable_image_changed(self):
         state = "disabled" if self.disable_image_var.get() else "normal"
         self.disable_wmf_cb.configure(state=state)
+        self.image_dir_label.configure(state=state)
         self.image_dir_entry.configure(state=state)
         self.image_dir_btn.configure(state=state)
+        self.image_width_label.configure(state=state)
         self.image_width_entry.configure(state=state)
 
     def _on_ppt_extract_images_changed(self):
