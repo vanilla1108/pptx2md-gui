@@ -61,6 +61,7 @@ class App(DnDCompatibleCTk):
         self._cancel_event = threading.Event()
         self._worker = None
         self._preset_manager = PresetManager()
+        self._ppt_warned = False  # 去重标志：避免重复输出 PPT 环境检测日志
 
         # 全局主题（配色集中在 pptx2md_gui/theme.py）
         # 从预设管理器加载上次使用的外观模式
@@ -311,8 +312,16 @@ class App(DnDCompatibleCTk):
         # PPT 参数灰置联动
         has_ppt = self.file_panel.has_ppt_files()
         self.params_panel.set_ppt_group_enabled(has_ppt)
-        if has_ppt:
-            self.log_panel.log("WARNING", "PPT 格式转换为实验性功能，需要 Windows + PowerPoint 环境")
+        if has_ppt and not self._ppt_warned:
+            self._ppt_warned = True
+            from pptx2md.ppt_legacy import check_environment
+            env_ok, env_reason = check_environment(strict=False)
+            if env_ok:
+                self.log_panel.log("INFO", "PPT 格式转换为实验性功能，当前环境满足要求")
+            else:
+                self.log_panel.log("WARNING", f"PPT 格式转换为实验性功能，{env_reason}")
+        elif not has_ppt:
+            self._ppt_warned = False
 
     def _on_start_conversion(self):
         """启动转换流程。"""
