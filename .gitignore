@@ -1,0 +1,43 @@
+# Build & Distribution
+dist/
+build/
+build_portable/pptx2md-gui
+*.egg-info/
+.pypirc
+publish.bat
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE & Editor
+.vscode/
+.idea/
+*.code-workspace
+
+# AI Collaboration
+.claude/
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+
+# Test Data (large binary files)
+test_pptx/
+ppt2md_script/test-ppt/
+ppt2md_script/test-output/
+
+# Test Temporaries
+test_output/
+tmp_test_artifacts/
+tmp_pytest/
+tmp_smoke_ole/
+tmp_smoke_ole_v2/
+tmp_smoke_ole_com_png/
+tmp_smoke_ole_com_png_v2/
+
+# Conversion Output
+/pptx2md/img
+*.qmd

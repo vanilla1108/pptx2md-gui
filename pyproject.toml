@@ -1,0 +1,58 @@
+[tool.poetry]
+name = "pptx2md"
+version = "0.1.0b1"
+description = "This package converts pptx to markdown"
+repository = "https://github.com/vanilla1108/pptx2md-gui"
+authors = ["Liu Siyao <liu.siyao@qq.com>", "vanilla1108"]
+license = "Apache-2.0"
+
+[tool.poetry.scripts]
+pptx2md = "pptx2md.__main__:main"
+pptx2md-gui = "pptx2md_gui.__main__:main"
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4"
+python-pptx = ">=0.6.18"
+rapidfuzz = ">=0.10.0"
+Pillow = ">=6.0.0"
+tqdm = ">=4"
+pydantic = "^2.9.2"
+dwml = ">=0.3"
+scipy = "^1.14.1"
+numpy = "^2.1.3"
+customtkinter = "^5.2.0"
+tkinterdnd2 = ">=0.3.0"
+CTkToolTip = "^0.8"
+
+[tool.poetry.group.dev.dependencies]
+yapf = "^0.43.0"
+isort = {version = ">=5.0.0"}
+pycln = "^2.4.0"
+wand = "^0.6.13"
+pytest = "^8.0.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# 说明：当前运行环境对 pytest tmpdir/tmp_path 的创建与清理存在权限限制（目录会变成不可访问，导致会话结束时报错），
+# 因此禁用 tmpdir 插件，统一使用 tests/conftest.py 提供的 workspace_tmp_path/session_tmp_dir/tmp_path。
+addopts = "-p no:tmpdir -p no:cacheprovider -m \"not ppt_com\""
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "ppt_com: 需要 Windows + PowerPoint COM（手动运行 -m ppt_com）",
+]
+
+[tool.yapf]
+based_on_style = "google"
+column_limit = 120
+
+[tool.isort]
+profile = "hug"
+line_length = 120
+
+[tool.pycln]
+path = "pptx2md/"
+all = true
