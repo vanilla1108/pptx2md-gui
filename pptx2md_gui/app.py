@@ -56,11 +56,6 @@ class App(DnDCompatibleCTk):
         self.geometry("1000x700")
         self.minsize(900, 650)
 
-        # 窗口图标
-        icon_path = Path(__file__).resolve().parent.parent / "assets" / "icon.ico"
-        if icon_path.exists():
-            self.after(200, lambda: self.iconbitmap(str(icon_path)))
-
         # 状态
         self._log_queue = queue.Queue()
         self._cancel_event = threading.Event()

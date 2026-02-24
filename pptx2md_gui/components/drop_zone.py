@@ -1,6 +1,7 @@
 """文件拖放区域组件。"""
 
 import logging
+import re
 from pathlib import Path
 from typing import Callable, List
 
@@ -124,14 +125,16 @@ class DropZone(ctk.CTkFrame):
 
     def _parse_drop_data(self, data: str) -> List[Path]:
         """解析 tkinterdnd2 的拖放文件数据。"""
-        files = []
-        if data.startswith("{"):
-            for item in data.split("} {"):
-                item = item.strip("{}")
-                if item:
-                    files.append(Path(item))
-        else:
-            for item in data.split():
-                if item:
-                    files.append(Path(item))
-        return files
+        if not data:
+            return []
+
+        raw_items = []
+        try:
+            # tkdnd 的 event.data 本质是 Tcl list，使用 splitlist 可正确处理多文件与空格路径。
+            raw_items = list(self.tk.splitlist(data))
+        except Exception:
+            # 回退：兼容异常格式（如部分平台返回的非标准字符串）。
+            tokens = re.findall(r"\{([^}]*)\}|([^\s]+)", data)
+            raw_items = [group1 or group2 for group1, group2 in tokens]
+
+        return [Path(str(item).strip()) for item in raw_items if str(item).strip()]

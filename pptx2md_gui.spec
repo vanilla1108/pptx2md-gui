@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 block_cipher = None
 
@@ -14,7 +14,6 @@ block_cipher = None
 # ---------------------------------------------------------------------------
 
 PROJECT_ROOT = SPECPATH  # SPECPATH is already the directory containing the spec file
-ICON_PATH = os.path.join(PROJECT_ROOT, "assets", "icon.ico")
 
 # ---------------------------------------------------------------------------
 # Hidden imports
@@ -52,6 +51,12 @@ hiddenimports += collect_submodules("rapidfuzz")
 # customtkinter internals
 hiddenimports += collect_submodules("customtkinter")
 
+# pywin32 / COM (Windows only): .ppt conversion + WMF COM fallback
+if sys.platform == "win32":
+    hiddenimports += collect_submodules("win32com")
+    hiddenimports += collect_submodules("win32comext")
+    hiddenimports += ["pythoncom", "pywintypes", "win32timezone"]
+
 # tkinterdnd2
 hiddenimports += ["tkinterdnd2", "tkinterdnd2.TkinterDnD"]
 
@@ -75,6 +80,7 @@ hiddenimports += ["numpy", "numpy.core", "numpy.core._multiarray_umath"]
 # ---------------------------------------------------------------------------
 
 datas = []
+binaries = []
 
 # customtkinter theme JSON files + assets
 datas += collect_data_files("customtkinter")
@@ -88,8 +94,9 @@ datas += collect_data_files("CTkToolTip")
 # python-pptx templates (default.pptx, theme.xml, etc.)
 datas += collect_data_files("pptx")
 
-# Application icon
-datas += [(ICON_PATH, "assets")]
+# pywin32 native DLLs (pythoncom/pywintypes)
+if sys.platform == "win32":
+    binaries += collect_dynamic_libs("pywin32_system32")
 
 # ---------------------------------------------------------------------------
 # Analysis
@@ -98,7 +105,7 @@ datas += [(ICON_PATH, "assets")]
 a = Analysis(
     [os.path.join(PROJECT_ROOT, "pptx2md_gui", "__main__.py")],
     pathex=[PROJECT_ROOT],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
@@ -171,7 +178,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=ICON_PATH if os.path.exists(ICON_PATH) else None,
 )
 
 coll = COLLECT(

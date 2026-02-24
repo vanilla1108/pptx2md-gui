@@ -6,7 +6,7 @@ Usage:
     python build_exe.py --clean    # Clean build artifacts only
 
 Prerequisites:
-    pip install pyinstaller
+    pip install pyinstaller pywin32
 """
 
 import argparse
@@ -195,6 +195,15 @@ def main():
         print("PyInstaller is not installed. Install it with:")
         print("  pip install pyinstaller")
         sys.exit(1)
+
+    if sys.platform == "win32":
+        try:
+            import win32com.client  # noqa: F401
+        except ImportError:
+            print("pywin32 is required on Windows for .ppt conversion and WMF COM fallback.")
+            print("Install it with:")
+            print("  pip install pywin32")
+            sys.exit(1)
 
     if not SPEC_FILE.exists():
         print(f"Spec file not found: {SPEC_FILE}")

@@ -5,10 +5,26 @@
 ## 启动
 
 ```bash
-poetry install
-poetry run pptx2md-gui
-# 或
+# 先完成下方“依赖安装（步骤）”
 python -m pptx2md_gui
+```
+
+## 依赖安装（步骤）
+
+### 开发环境
+
+```bash
+conda activate pptx2md_gui_dev
+pip install -e ".[dev]"
+```
+
+### 打包环境
+
+```bash
+conda create -n gui_build python=3.13 pip
+conda activate gui_build
+pip install -e .
+pip install pyinstaller
 ```
 
 ## GUI 依赖（按实际代码）
@@ -19,6 +35,7 @@ python -m pptx2md_gui
 - `tkinterdnd2`
 - `CTkToolTip`
 - `Pillow`（日志面板图标绘制）
+- `pywin32`（Windows 条件依赖；用于 `.ppt` 转换与 WMF COM 兜底）
 - Python 自带 `tkinter`（需包含 Tk）
 
 说明：
@@ -27,9 +44,10 @@ python -m pptx2md_gui
 
 ### 运行时可选依赖（由核心转换逻辑触发）
 
-- `pywin32`：`.ppt` 转换与 WMF COM 兜底
 - `wand` + ImageMagick：额外 WMF 转换链路
 - Microsoft PowerPoint：`.ppt` 转换必须
+
+可选能力由 `dev` extra 一并提供（含 `wand`）。
 
 ## 功能概览
 
@@ -81,20 +99,8 @@ GUI 中分为两条转换路径：
 ## 打包（Windows）
 
 ```powershell
-python -m pip install pyinstaller pywin32
-
-python -m PyInstaller `
-  --noconfirm --clean --windowed --onedir `
-  --name pptx2md-gui `
-  --paths . `
-  --collect-data customtkinter `
-  --collect-data tkinterdnd2 `
-  --collect-submodules win32com `
-  --collect-submodules win32comext `
-  --hidden-import pythoncom `
-  --hidden-import pywintypes `
-  --hidden-import win32timezone `
-  pptx2md_gui\__main__.py
+conda activate gui_build
+python build_exe.py
 ```
 
 输出目录：`dist/pptx2md-gui/`
