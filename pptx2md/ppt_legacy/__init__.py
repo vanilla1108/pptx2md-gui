@@ -24,8 +24,16 @@ def check_environment(strict: bool = False) -> tuple[bool, str]:
         return False, "需要安装 pywin32（pip install pywin32）"
 
     if strict:
+        try:
+            import pythoncom
+        except ImportError:
+            return False, "需要安装完整 pywin32（缺少 pythoncom）"
+
+        com_initialized = False
         app = None
         try:
+            pythoncom.CoInitialize()
+            com_initialized = True
             # 使用 DispatchEx 创建独立实例，避免绑定并关闭用户现有 PowerPoint 进程
             app = win32com.client.DispatchEx("PowerPoint.Application")
             app.DisplayAlerts = 0
@@ -35,6 +43,11 @@ def check_environment(strict: bool = False) -> tuple[bool, str]:
             if app is not None:
                 try:
                     app.Quit()
+                except Exception:
+                    pass
+            if com_initialized:
+                try:
+                    pythoncom.CoUninitialize()
                 except Exception:
                     pass
 

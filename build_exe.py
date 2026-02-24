@@ -1,12 +1,12 @@
-"""pptx2md-gui portable EXE build script.
+"""pptx2md-gui 便携 EXE 打包脚本。
 
-Usage:
-    python build_exe.py            # Standard build (--onedir)
-    python build_exe.py --onefile  # Single-file build (slower startup, more AV-sensitive)
-    python build_exe.py --clean    # Clean build artifacts only
+用法:
+    python build_exe.py            # 标准打包（--onedir 模式）
+    python build_exe.py --onefile  # 单文件打包（启动较慢，更易被杀软拦截）
+    python build_exe.py --clean    # 仅清理构建产物
 
-Prerequisites:
-    pip install pyinstaller pywin32
+前置条件:
+    pip install -e ".[build]"
 """
 
 import argparse
@@ -14,83 +14,33 @@ import os
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 BUILD_DIR = PROJECT_ROOT / "build"
 DIST_DIR = PROJECT_ROOT / "dist"
 SPEC_FILE = PROJECT_ROOT / "pptx2md_gui.spec"
-
-# Safe build directories outside of OneDrive / user profile to reduce AV interference
-SAFE_WORK_DIR = Path("C:/temp/pptx2md_build/build")
-SAFE_DIST_DIR = Path("C:/temp/pptx2md_build/dist")
-
-MAX_RETRIES = 3
-RETRY_DELAY_SECONDS = 5
+ONEFILE_ENV_VAR = "PPTX2MD_GUI_ONEFILE"
 
 
 def clean_build_artifacts():
-    """Remove stale build and dist directories."""
+    """清理残留的 build 和 dist 目录。"""
     for d in [BUILD_DIR, DIST_DIR]:
         if d.exists():
-            print(f"Cleaning {d} ...")
+            print(f"正在清理 {d} ...")
             shutil.rmtree(d, ignore_errors=True)
 
-    for d in [SAFE_WORK_DIR, SAFE_DIST_DIR]:
-        if d.exists():
-            print(f"Cleaning {d} ...")
-            shutil.rmtree(d, ignore_errors=True)
-
-    # Remove __pycache__ in our source directories
+    # 清理源码目录中的 __pycache__
     for pkg in ["pptx2md", "pptx2md_gui"]:
         pkg_dir = PROJECT_ROOT / pkg
         for cache_dir in pkg_dir.rglob("__pycache__"):
             shutil.rmtree(cache_dir, ignore_errors=True)
 
-    print("Build artifacts cleaned.")
+    print("构建产物已清理。")
 
 
-def check_defender_exclusion():
-    """Check and suggest Windows Defender exclusion if on Windows."""
-    if sys.platform != "win32":
-        return
-
-    print("\n--- Windows Defender Exclusion Check ---")
-    print(f"Project directory: {PROJECT_ROOT}")
-    print(
-        "If the build fails with WinError 5, add this directory to Defender exclusions:"
-    )
-    print(f'  powershell -Command "Add-MpPreference -ExclusionPath \'{PROJECT_ROOT}\'"')
-    print(
-        "  (Run as Administrator)\n"
-    )
-
-
-def try_add_defender_exclusion():
-    """Attempt to add Defender exclusion for project dir (may require admin)."""
-    if sys.platform != "win32":
-        return False
-
-    dirs_to_exclude = [str(PROJECT_ROOT), str(SAFE_WORK_DIR.parent)]
-    for d in dirs_to_exclude:
-        try:
-            subprocess.run(
-                [
-                    "powershell",
-                    "-Command",
-                    f"Add-MpPreference -ExclusionPath '{d}'",
-                ],
-                capture_output=True,
-                timeout=10,
-            )
-        except Exception:
-            pass
-    return True
-
-
-def build(use_onefile: bool = False, use_safe_dirs: bool = True):
-    """Run PyInstaller with the spec file."""
+def build(use_onefile: bool = False):
+    """使用 spec 文件执行 PyInstaller 打包。"""
 
     cmd = [
         sys.executable,
@@ -98,89 +48,39 @@ def build(use_onefile: bool = False, use_safe_dirs: bool = True):
         "PyInstaller",
         "--clean",
         "--noconfirm",
+        str(SPEC_FILE),
     ]
 
-    if use_safe_dirs and sys.platform == "win32":
-        # Build in safe directory to avoid OneDrive / AV locks
-        SAFE_WORK_DIR.mkdir(parents=True, exist_ok=True)
-        SAFE_DIST_DIR.mkdir(parents=True, exist_ok=True)
-        cmd += [
-            "--workpath",
-            str(SAFE_WORK_DIR),
-            "--distpath",
-            str(SAFE_DIST_DIR),
-        ]
-
     if use_onefile:
-        # For --onefile mode, we modify the spec dynamically
-        # Build a single-file EXE variant
-        cmd += [
-            str(SPEC_FILE),
-        ]
-        print(
-            "WARNING: --onefile mode is more susceptible to AV interference."
-        )
-        print("If the build fails, try without --onefile first.\n")
-    else:
-        cmd += [str(SPEC_FILE)]
+        print("警告: --onefile 模式更容易被杀软拦截。")
+        print("如果构建失败，请先尝试不带 --onefile 的标准模式。\n")
 
-    print(f"Running: {' '.join(cmd)}\n")
+    print(f"执行命令: {' '.join(cmd)}\n")
 
-    for attempt in range(1, MAX_RETRIES + 1):
-        result = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
-        if result.returncode == 0:
-            dist_base = SAFE_DIST_DIR if use_safe_dirs else DIST_DIR
-            output_dir = dist_base / "pptx2md-gui"
-            print(f"\nBuild successful! Output: {output_dir}")
+    env = os.environ.copy()
+    env[ONEFILE_ENV_VAR] = "1" if use_onefile else "0"
 
-            if use_safe_dirs and sys.platform == "win32":
-                # Copy result back to project dist/
-                final_dist = DIST_DIR / "pptx2md-gui"
-                if final_dist.exists():
-                    shutil.rmtree(final_dist, ignore_errors=True)
-                DIST_DIR.mkdir(parents=True, exist_ok=True)
-                shutil.copytree(output_dir, final_dist)
-                print(f"Copied to: {final_dist}")
+    result = subprocess.run(cmd, cwd=str(PROJECT_ROOT), env=env)
+    if result.returncode == 0:
+        output_path = DIST_DIR / "pptx2md-gui.exe" if use_onefile else DIST_DIR / "pptx2md-gui"
+        print(f"\n构建成功！输出: {output_path}")
+        return True
 
-            return True
-
-        print(f"\nBuild attempt {attempt}/{MAX_RETRIES} failed (exit code {result.returncode}).")
-
-        if attempt < MAX_RETRIES:
-            print(f"Retrying in {RETRY_DELAY_SECONDS} seconds...")
-            print("(WinError 5 is often transient - AV scanner releasing file locks)")
-            time.sleep(RETRY_DELAY_SECONDS)
-
-            # Clean build dir between retries
-            work_dir = SAFE_WORK_DIR if use_safe_dirs else BUILD_DIR
-            if work_dir.exists():
-                shutil.rmtree(work_dir, ignore_errors=True)
-
-    print("\nAll build attempts failed.")
-    print("Please try the following:")
-    print("  1. Add Windows Defender exclusions (see above)")
-    print("  2. Close File Explorer windows near the build/dist directories")
-    print("  3. Ensure no previous build EXE is running")
-    print("  4. Try running as Administrator")
+    print(f"\n构建失败（退出码 {result.returncode}）。")
     return False
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Build pptx2md-gui portable EXE")
+    parser = argparse.ArgumentParser(description="构建 pptx2md-gui 便携 EXE")
     parser.add_argument(
         "--onefile",
         action="store_true",
-        help="Build as single-file EXE (slower startup, more AV-sensitive)",
+        help="打包为单文件 EXE（启动较慢，更易被杀软拦截）",
     )
     parser.add_argument(
         "--clean",
         action="store_true",
-        help="Only clean build artifacts, do not build",
-    )
-    parser.add_argument(
-        "--no-safe-dirs",
-        action="store_true",
-        help="Build in project directory instead of C:/temp (may trigger AV)",
+        help="仅清理构建产物，不执行打包",
     )
     args = parser.parse_args()
 
@@ -188,11 +88,11 @@ def main():
         clean_build_artifacts()
         return
 
-    # Preflight checks
+    # 前置检查
     try:
         import PyInstaller  # noqa: F401
     except ImportError:
-        print("PyInstaller is not installed. Install it with:")
+        print("未安装 PyInstaller，请执行:")
         print("  pip install pyinstaller")
         sys.exit(1)
 
@@ -200,23 +100,18 @@ def main():
         try:
             import win32com.client  # noqa: F401
         except ImportError:
-            print("pywin32 is required on Windows for .ppt conversion and WMF COM fallback.")
-            print("Install it with:")
+            print("Windows 下需要 pywin32 以支持 .ppt 转换和 WMF COM 回退。")
+            print("请执行:")
             print("  pip install pywin32")
             sys.exit(1)
 
     if not SPEC_FILE.exists():
-        print(f"Spec file not found: {SPEC_FILE}")
+        print(f"未找到 spec 文件: {SPEC_FILE}")
         sys.exit(1)
 
-    check_defender_exclusion()
-    try_add_defender_exclusion()
     clean_build_artifacts()
 
-    success = build(
-        use_onefile=args.onefile,
-        use_safe_dirs=not args.no_safe_dirs,
-    )
+    success = build(use_onefile=args.onefile)
     sys.exit(0 if success else 1)
 
 

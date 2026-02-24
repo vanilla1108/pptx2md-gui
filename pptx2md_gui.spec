@@ -8,6 +8,7 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 block_cipher = None
+IS_ONEFILE = os.environ.get("PPTX2MD_GUI_ONEFILE", "").strip() == "1"
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -159,33 +160,55 @@ a = Analysis(
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 # ---------------------------------------------------------------------------
-# EXE (--onedir mode: more stable, less AV interference)
+# EXE
 # ---------------------------------------------------------------------------
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    [],
-    exclude_binaries=True,
-    name="pptx2md-gui",
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=False,  # Disable UPX to avoid AV false positives and WinError 5
-    console=False,  # GUI application, no console window
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-)
+if IS_ONEFILE:
+    # onefile: binaries/datas directly packed into the executable.
+    exe = EXE(
+        pyz,
+        a.scripts,
+        a.binaries,
+        a.datas,
+        [],
+        name="pptx2md-gui",
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,  # Disable UPX to avoid AV false positives and WinError 5
+        console=False,  # GUI application, no console window
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+    )
+else:
+    # onedir: more stable and easier to inspect.
+    exe = EXE(
+        pyz,
+        a.scripts,
+        [],
+        exclude_binaries=True,
+        name="pptx2md-gui",
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,  # Disable UPX to avoid AV false positives and WinError 5
+        console=False,  # GUI application, no console window
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+    )
 
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=False,
-    upx_exclude=[],
-    name="pptx2md-gui",
-)
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.datas,
+        strip=False,
+        upx=False,
+        upx_exclude=[],
+        name="pptx2md-gui",
+    )

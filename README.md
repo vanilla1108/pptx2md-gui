@@ -28,8 +28,7 @@ pip install -e ".[dev]"
 ```bash
 conda create -n gui_build python=3.13 pip
 conda activate gui_build
-pip install -e .
-pip install pyinstaller
+pip install -e ".[build]"
 ```
 
 ## 依赖说明（按场景）

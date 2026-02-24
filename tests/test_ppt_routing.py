@@ -1,6 +1,7 @@
 """PPT 路由与配置的单元测试。"""
 
 from pathlib import Path
+import types
 from unittest.mock import patch
 
 import pytest
@@ -69,6 +70,100 @@ class TestCheckEnvironment:
             ok, reason = check_environment()
             assert ok is False
             assert "pywin32" in reason
+
+    @patch("platform.system", return_value="Windows")
+    def test_strict_initializes_and_uninitializes_com(self, _mock_sys):
+        from pptx2md.ppt_legacy import check_environment
+
+        state = {"co_init": 0, "co_uninit": 0, "dispatch": 0, "quit": 0}
+
+        class _FakeApp:
+            def __init__(self):
+                self.DisplayAlerts = 1
+
+            def Quit(self):
+                state["quit"] += 1
+
+        fake_client = types.ModuleType("win32com.client")
+
+        def _dispatch_ex(_prog_id):
+            state["dispatch"] += 1
+            return _FakeApp()
+
+        fake_client.DispatchEx = _dispatch_ex
+
+        fake_win32com = types.ModuleType("win32com")
+        fake_win32com.client = fake_client
+
+        fake_pythoncom = types.ModuleType("pythoncom")
+
+        def _co_initialize():
+            state["co_init"] += 1
+
+        def _co_uninitialize():
+            state["co_uninit"] += 1
+
+        fake_pythoncom.CoInitialize = _co_initialize
+        fake_pythoncom.CoUninitialize = _co_uninitialize
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "win32com": fake_win32com,
+                "win32com.client": fake_client,
+                "pythoncom": fake_pythoncom,
+            },
+        ):
+            ok, reason = check_environment(strict=True)
+
+        assert ok is True
+        assert reason == ""
+        assert state["co_init"] == 1
+        assert state["co_uninit"] == 1
+        assert state["dispatch"] == 1
+        assert state["quit"] == 1
+
+    @patch("platform.system", return_value="Windows")
+    def test_strict_dispatch_failure_still_uninitializes_com(self, _mock_sys):
+        from pptx2md.ppt_legacy import check_environment
+
+        state = {"co_init": 0, "co_uninit": 0}
+
+        fake_client = types.ModuleType("win32com.client")
+
+        def _dispatch_ex(_prog_id):
+            raise RuntimeError("boom")
+
+        fake_client.DispatchEx = _dispatch_ex
+
+        fake_win32com = types.ModuleType("win32com")
+        fake_win32com.client = fake_client
+
+        fake_pythoncom = types.ModuleType("pythoncom")
+
+        def _co_initialize():
+            state["co_init"] += 1
+
+        def _co_uninitialize():
+            state["co_uninit"] += 1
+
+        fake_pythoncom.CoInitialize = _co_initialize
+        fake_pythoncom.CoUninitialize = _co_uninitialize
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "win32com": fake_win32com,
+                "win32com.client": fake_client,
+                "pythoncom": fake_pythoncom,
+            },
+        ):
+            ok, reason = check_environment(strict=True)
+
+        assert ok is False
+        assert "PowerPoint 启动失败" in reason
+        assert state["co_init"] == 1
+        assert state["co_uninit"] == 1
 
 
 class TestFileValidators:

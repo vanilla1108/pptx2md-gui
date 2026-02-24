@@ -49,10 +49,24 @@ from pptx2md.ppt_legacy.extractor_core import (
     strip_bullet_like_prefix_core as _strip_bullet_like_prefix_core,
 )
 
+
+def _safe_reconfigure_stream(stream):
+    """仅在流对象可用且支持 reconfigure 时调整编码。"""
+    if stream is None:
+        return
+    reconfigure = getattr(stream, "reconfigure", None)
+    if not callable(reconfigure):
+        return
+    try:
+        reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+
 # 修复Windows控制台编码问题
 if sys.platform == 'win32':
-    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    _safe_reconfigure_stream(sys.stdout)
+    _safe_reconfigure_stream(sys.stderr)
 
 # 同一行判定阈值（磅）
 # - "auto": 自适应模式，基于文本高度动态计算（推荐）
@@ -94,7 +108,12 @@ def _log(level: str, msg: str):
         _log_cb(level, f"[PPT] {msg}")
     else:
         target = sys.stderr if level in ("ERROR", "DEBUG") else sys.stdout
-        print(msg, file=target)
+        if target is None:
+            return
+        try:
+            print(msg, file=target)
+        except Exception:
+            pass
 
 
 def _debug(msg: str):
@@ -186,7 +205,7 @@ def _debug_exc(context, e):
     _log("DEBUG", f"{context}: {_format_exc(e)}")
     try:
         tb = getattr(e, "__traceback__", None)
-        if tb is not None and not _log_cb:
+        if tb is not None and not _log_cb and sys.stderr is not None:
             # 仅无回调（CLI 独立运行）时打印完整堆栈到 stderr
             traceback.print_exception(type(e), e, tb, file=sys.stderr)
     except Exception:
@@ -1135,6 +1154,7 @@ def _extract_ppt_content_inner(config, cancel_event,
                                extract_images, image_dir, table_header):
     """extract_ppt_content 的实际执行体。"""
     import win32com.client
+    import pythoncom
 
     if config is None:
         if isinstance(ppt_path, ExtractConfig):
@@ -1179,22 +1199,26 @@ def _extract_ppt_content_inner(config, cancel_event,
         _log("INFO", f"图片: 启用 (目录: {image_ctx.get('dir')})")
     else:
         _log("INFO", "图片: 禁用 (输出占位标注)")
-
-    ppt_app = win32com.client.Dispatch("PowerPoint.Application")
-    if ui:
-        _try_call(lambda: setattr(ppt_app, "Visible", True), "extract_ppt_content: 设置Visible=True失败")
-    else:
-        try:
-            ppt_app.Visible = False
-        except Exception as e:
-            _debug_exc("extract_ppt_content: 设置Visible=False失败，回退Visible=True", e)
-            _try_call(lambda: setattr(ppt_app, "Visible", True), "extract_ppt_content: 回退Visible=True失败")
-    _try_call(lambda: setattr(ppt_app, "DisplayAlerts", 0), "extract_ppt_content: 设置DisplayAlerts失败")
-
     md = []
     presentation = None
+    ppt_app = None
+    com_initialized = False
 
     try:
+        pythoncom.CoInitialize()
+        com_initialized = True
+
+        ppt_app = win32com.client.Dispatch("PowerPoint.Application")
+        if ui:
+            _try_call(lambda: setattr(ppt_app, "Visible", True), "extract_ppt_content: 设置Visible=True失败")
+        else:
+            try:
+                ppt_app.Visible = False
+            except Exception as e:
+                _debug_exc("extract_ppt_content: 设置Visible=False失败，回退Visible=True", e)
+                _try_call(lambda: setattr(ppt_app, "Visible", True), "extract_ppt_content: 回退Visible=True失败")
+        _try_call(lambda: setattr(ppt_app, "DisplayAlerts", 0), "extract_ppt_content: 设置DisplayAlerts失败")
+
         if cancel_event and cancel_event.is_set():
             raise ConversionCancelled()
 
@@ -1352,7 +1376,7 @@ def _extract_ppt_content_inner(config, cancel_event,
         return False
     except Exception as e:
         _log("ERROR", f"转换出错: {_format_exc(e)}")
-        if DEBUG:
+        if DEBUG and sys.stderr is not None:
             traceback.print_exc(file=sys.stderr)
         return False
 
@@ -1362,7 +1386,13 @@ def _extract_ppt_content_inner(config, cancel_event,
                 presentation.Close()
             except Exception as e:
                 _debug_exc("extract_ppt_content: presentation.Close失败", e)
-        try:
-            ppt_app.Quit()
-        except Exception as e:
-            _debug_exc("extract_ppt_content: ppt_app.Quit失败", e)
+        if ppt_app is not None:
+            try:
+                ppt_app.Quit()
+            except Exception as e:
+                _debug_exc("extract_ppt_content: ppt_app.Quit失败", e)
+        if com_initialized:
+            try:
+                pythoncom.CoUninitialize()
+            except Exception as e:
+                _debug_exc("extract_ppt_content: CoUninitialize失败", e)
