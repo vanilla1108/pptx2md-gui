@@ -1,8 +1,8 @@
 """pptx2md GUI 主应用窗口。"""
 
+import importlib.util
 import logging
 import queue
-import sys
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -12,7 +12,6 @@ from typing import List
 import customtkinter as ctk
 from tkinterdnd2 import TkinterDnD
 
-import pptx2md
 from pptx2md.log import setup_logging
 
 from . import theme
@@ -71,7 +70,8 @@ class App(DnDCompatibleCTk):
         # 为 GUI 设置带队列处理器的日志系统
         self._log_handler = QueueLogHandler(self._log_queue)
         setup_logging(compat_tqdm=False, external_handlers=[self._log_handler])
-        if getattr(pptx2md, "__file__", None) is None:
+        spec = importlib.util.find_spec("pptx2md")
+        if spec is None or spec.origin is None:
             LOGGER.warning("无法定位 pptx2md 模块路径，转换功能可能异常")
 
         # 构建界面

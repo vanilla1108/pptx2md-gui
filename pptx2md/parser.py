@@ -33,7 +33,6 @@ from pptx.oxml.ns import qn
 from rapidfuzz import process as fuze_process
 from tqdm import tqdm
 
-from pptx2md.multi_column import get_multi_column_slide_if_present
 from pptx2md.types import (
     ConversionConfig,
     GeneralSlide,
@@ -974,6 +973,11 @@ def parse(config: ConversionConfig, prs: Presentation, progress_callback=None, c
     slides = list(prs.slides)
     total_slides = len(slides)
     iterator = slides if disable_tqdm else tqdm(slides, desc='Converting slides')
+    multi_column_slide_getter = None
+    if config.try_multi_column:
+        from pptx2md.multi_column import (
+            get_multi_column_slide_if_present as multi_column_slide_getter,
+        )
 
     for idx, slide in enumerate(iterator):
         if cancel_event and cancel_event.is_set():
@@ -1001,7 +1005,7 @@ def parse(config: ConversionConfig, prs: Presentation, progress_callback=None, c
         if not config.try_multi_column:
             result_slide = GeneralSlide(elements=process_shapes(config, shapes, idx + 1))
         else:
-            multi_column_slide = get_multi_column_slide_if_present(
+            multi_column_slide = multi_column_slide_getter(
                 prs, slide, partial(process_shapes, config=config, slide_id=idx + 1))
             if multi_column_slide:
                 result_slide = multi_column_slide

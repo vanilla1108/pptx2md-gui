@@ -1,9 +1,10 @@
 """GUI 状态与 ConversionConfig 之间的配置桥接。"""
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from pptx2md.types import ConversionConfig
+if TYPE_CHECKING:
+    from pptx2md.types import ConversionConfig
 
 
 def _resolve_positive_bool(
@@ -25,7 +26,7 @@ def build_config(
     pptx_path: Path,
     params: Dict[str, Any],
     output_dir: Optional[Path] = None,
-) -> ConversionConfig:
+) -> "ConversionConfig":
     """根据 GUI 参数构建 ConversionConfig。
 
     参数:
@@ -109,6 +110,8 @@ def build_config(
         default_when_missing=True,
     )
 
+    from pptx2md.types import ConversionConfig
+
     return ConversionConfig(
         pptx_path=pptx_path,
         output_path=output_path,
@@ -133,7 +136,7 @@ def build_config(
     )
 
 
-def load_to_gui(config: ConversionConfig) -> Dict[str, Any]:
+def load_to_gui(config: "ConversionConfig") -> Dict[str, Any]:
     """将 ConversionConfig 转换为 GUI 参数字典。
 
     参数:

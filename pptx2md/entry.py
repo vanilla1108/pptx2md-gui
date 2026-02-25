@@ -15,16 +15,15 @@
 # Modifications Copyright 2025-2026 vanilla1108
 
 import logging
+from typing import TYPE_CHECKING
 
-import pptx2md.outputter as outputter
-from pptx2md import parser as _parser
-from pptx2md.types import ConversionConfig
-from pptx2md.utils import load_pptx, prepare_titles
+if TYPE_CHECKING:
+    from pptx2md.types import ConversionConfig
 
 logger = logging.getLogger(__name__)
 
 
-def convert(config: ConversionConfig, progress_callback=None, cancel_event=None, disable_tqdm=False):
+def convert(config: "ConversionConfig", progress_callback=None, cancel_event=None, disable_tqdm=False):
     """将 PowerPoint 演示文稿转换为 Markdown。
 
     参数:
@@ -33,6 +32,10 @@ def convert(config: ConversionConfig, progress_callback=None, cancel_event=None,
         cancel_event: 可选的 threading.Event，用于支持取消操作。
         disable_tqdm: 禁用 tqdm 进度条（适用于 GUI）。
     """
+    import pptx2md.outputter as outputter
+    from pptx2md import parser as _parser
+    from pptx2md.utils import load_pptx, prepare_titles
+
     if config.title_path:
         config.custom_titles = prepare_titles(config.title_path)
 
