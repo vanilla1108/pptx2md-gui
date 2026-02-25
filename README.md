@@ -15,6 +15,12 @@ PPT/PPTX 转 Markdown 桌面工具，提供 GUI（仅 Windows）与 CLI，基于
 - **支持内容**：标题、列表、强调样式、超链接、表格、图片、备注、多栏检测、部分公式与 OLE 预览图
 - **GUI 特性**：批量转换、拖放导入、参数预设、深色/浅色主题
 
+## 预览
+
+| 深色主题 | 浅色主题 |
+|:---:|:---:|
+| ![深色主题](.github/assets/gui-dark.png) | ![浅色主题](.github/assets/gui-light.png) |
+
 ## 快速开始
 
 ### GUI（Windows 便携版）
@@ -89,7 +95,7 @@ python build_exe.py
 ## 致谢
 
 - [ssine/pptx2md](https://github.com/ssine/pptx2md)
-- [dwml](https://pypi.org/project/dwml/)
+- [xiilei/dwml](https://github.com/xiilei/dwml)
 
 ## 许可证
 
