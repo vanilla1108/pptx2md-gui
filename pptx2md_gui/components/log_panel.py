@@ -1,9 +1,8 @@
 """日志面板组件 - 主窗口底部。"""
 
 import math
-import queue
 from datetime import datetime
-from typing import Callable, Optional
+from typing import Callable
 
 import customtkinter as ctk
 from PIL import Image, ImageDraw
@@ -98,7 +97,6 @@ class LogPanel(ctk.CTkFrame):
         super().__init__(master, **kwargs)
         self.on_start = on_start
         self.on_cancel = on_cancel
-        self.log_queue: Optional[queue.Queue] = None
         self._setup_ui()
 
         # 注册主题变更监听，用于更新日志标签颜色和切换按钮图标

@@ -96,35 +96,23 @@ class App(DnDCompatibleCTk):
         # 垂直分隔窗口：上方面板区 + 下方日志区，用户可拖拽调节高度
         # 使用 tk.PanedWindow（非 ttk）以支持 bg/opaqueresize/paneconfigure(minsize)
         bg = theme.paned_window_bg()
-        self._vpaned = tk.PanedWindow(
-            self,
-            orient=tk.VERTICAL,
+        paned_kwargs = dict(
             bg=bg,
             # 显式指定普通光标，避免在 Windows + Tk 下出现 sashcursor “泄漏”到整块区域的情况
-            # （升级样式后更容易在 PanedWindow 背景上触发，从而看起来全局都是双向箭头）。
             cursor="arrow",
             sashwidth=SASH_HIT_WIDTH,
             sashrelief="flat",
-            # Windows 下该选项会在部分 Tk 版本中“泄漏”到整块区域，导致默认光标异常
+            # Windows 下该选项会在部分 Tk 版本中”泄漏”到整块区域，导致默认光标异常
             sashcursor="arrow",
             opaqueresize=False,
             borderwidth=0,
         )
+        self._vpaned = tk.PanedWindow(self, orient=tk.VERTICAL, **paned_kwargs)
         self._vpaned.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         self._bind_paned_sash_cursor(self._vpaned, "sb_v_double_arrow")
 
         # ── 上半部分：含左右面板的水平分隔窗口 ──
-        self._hpaned = tk.PanedWindow(
-            self._vpaned,
-            orient=tk.HORIZONTAL,
-            bg=bg,
-            cursor="arrow",
-            sashwidth=SASH_HIT_WIDTH,
-            sashrelief="flat",
-            sashcursor="arrow",
-            opaqueresize=False,
-            borderwidth=0,
-        )
+        self._hpaned = tk.PanedWindow(self._vpaned, orient=tk.HORIZONTAL, **paned_kwargs)
         self._bind_paned_sash_cursor(self._hpaned, "sb_h_double_arrow")
 
         # 左面板 - 文件选择（网格布局：FilePanel 可伸缩，预设区域固定高度）
@@ -306,8 +294,7 @@ class App(DnDCompatibleCTk):
 
     def _on_files_changed(self, files: List[Path]):
         """处理文件列表变更。"""
-        has_files = len(files) > 0
-        self.log_panel.set_start_enabled(has_files)
+        self.log_panel.set_start_enabled(bool(files))
 
         # PPT 参数灰置联动
         has_ppt = self.file_panel.has_ppt_files()

@@ -223,11 +223,9 @@ _TOOLTIP_COLORS = {
 
 def tooltip_bg() -> str:
     """当前模式下的 Tooltip 背景色。"""
-    pair = _TOOLTIP_COLORS["bg"]
-    return _resolve(pair)
+    return _resolve(_TOOLTIP_COLORS["bg"])
 
 
 def tooltip_fg() -> str:
     """当前模式下的 Tooltip 前景色。"""
-    pair = _TOOLTIP_COLORS["fg"]
-    return _resolve(pair)
+    return _resolve(_TOOLTIP_COLORS["fg"])

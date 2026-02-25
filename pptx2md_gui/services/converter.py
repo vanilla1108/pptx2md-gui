@@ -202,30 +202,7 @@ class ConversionWorker(threading.Thread):
 
         all_files = self._indexed_files()
         pptx_files, ppt_files = self._split_files_by_format(all_files)
-        cancelled = False
-        if ppt_files and pptx_files:
-            self.log_queue.put((
-                "INFO",
-                "检测到混合格式：将先并发转换 .pptx，再串行转换 .ppt（避免 COM 冲突）",
-            ))
-            if self._max_workers > 1:
-                effective_workers = self._effective_workers_for(pptx_files)
-                self.log_queue.put(("INFO", f".pptx 并发转换已启用：最多 {effective_workers} 个子进程"))
-                cancelled = self._run_subprocess_batch(pptx_files, effective_workers)
-            else:
-                cancelled = self._run_sequential_files(pptx_files)
-
-            if not cancelled and not self.cancel_event.is_set():
-                self.log_queue.put(("INFO", "开始串行转换 .ppt 文件"))
-                cancelled = self._run_sequential_files(ppt_files)
-        elif self._max_workers > 1 and not ppt_files:
-            effective_workers = self._effective_workers_for(all_files)
-            self.log_queue.put(("INFO", f"并发转换已启用：最多 {effective_workers} 个子进程"))
-            cancelled = self._run_subprocess_batch(all_files, effective_workers)
-        else:
-            if self._max_workers > 1 and ppt_files:
-                self.log_queue.put(("WARNING", "检测到 .ppt 文件，已自动切换为串行模式以避免 COM 冲突"))
-            cancelled = self._run_sequential_files(all_files)
+        cancelled = self._run_conversion_plan(all_files, pptx_files, ppt_files)
 
         if cancelled or self.cancel_event.is_set():
             self.log_queue.put(("WARNING", "用户取消转换"))
@@ -258,6 +235,48 @@ class ConversionWorker(threading.Thread):
             else:
                 pptx_files.append((file_idx, file_path))
         return pptx_files, ppt_files
+
+    def _run_conversion_plan(
+        self,
+        all_files: List[Tuple[int, Path]],
+        pptx_files: List[Tuple[int, Path]],
+        ppt_files: List[Tuple[int, Path]],
+    ) -> bool:
+        """根据文件格式和并发配置选择执行策略，返回是否被取消。"""
+
+        has_mixed = bool(pptx_files and ppt_files)
+        use_concurrent = self._max_workers > 1
+        target_pptx = pptx_files if has_mixed else all_files
+
+        # 混合格式：先 pptx 再串行 ppt（避免 COM 冲突）
+        if has_mixed:
+            self.log_queue.put((
+                "INFO",
+                "检测到混合格式：将先并发转换 .pptx，再串行转换 .ppt（避免 COM 冲突）",
+            ))
+
+        # 仅 ppt 文件时强制串行
+        if use_concurrent and ppt_files and not pptx_files:
+            self.log_queue.put(("WARNING", "检测到 .ppt 文件，已自动切换为串行模式以避免 COM 冲突"))
+            return self._run_sequential_files(all_files)
+
+        # pptx 部分：并发或串行
+        if use_concurrent and target_pptx:
+            effective_workers = self._effective_workers_for(target_pptx)
+            label = ".pptx 并发" if has_mixed else "并发"
+            self.log_queue.put(("INFO", f"{label}转换已启用：最多 {effective_workers} 个子进程"))
+            cancelled = self._run_subprocess_batch(target_pptx, effective_workers)
+        elif target_pptx:
+            cancelled = self._run_sequential_files(target_pptx)
+        else:
+            cancelled = False
+
+        # 混合格式的 ppt 串行部分
+        if has_mixed and not cancelled and not self.cancel_event.is_set():
+            self.log_queue.put(("INFO", "开始串行转换 .ppt 文件"))
+            cancelled = self._run_sequential_files(ppt_files)
+
+        return cancelled
 
     def _resolve_max_workers(self) -> int:
         """解析并发子进程数（空值时自动）。"""

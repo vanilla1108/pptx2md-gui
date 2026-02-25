@@ -53,6 +53,11 @@ class ParamsPanel(ctk.CTkScrollableFrame):
         """为控件附加工具提示并保持引用。"""
         self._tooltips.append(CTkToolTip(widget, message=text, delay=0.25))
 
+    def _tip_group(self, widgets, text: str):
+        """为一组控件附加相同的工具提示。"""
+        for widget in widgets:
+            self._tip(widget, text)
+
     def _create_group_frame(
         self,
         title: str,
@@ -458,9 +463,10 @@ class ParamsPanel(ctk.CTkScrollableFrame):
             self.ppt_image_dir_btn,
         ])
         ppt_img_dir_tip = 'PPT 图片保存目录，留空则默认输出到"输出目录/img"'
-        self._tip(self.ppt_image_dir_label, ppt_img_dir_tip)
-        self._tip(self.ppt_image_dir_entry, ppt_img_dir_tip)
-        self._tip(self.ppt_image_dir_btn, ppt_img_dir_tip)
+        self._tip_group(
+            [self.ppt_image_dir_label, self.ppt_image_dir_entry, self.ppt_image_dir_btn],
+            ppt_img_dir_tip,
+        )
 
         # 初始灰置
         self.set_ppt_group_enabled(False)
@@ -474,10 +480,14 @@ class ParamsPanel(ctk.CTkScrollableFrame):
         # 恢复子联动状态（分组禁用时保持禁用）
         self._on_ppt_extract_images_changed()
 
-    def _browse_output_dir(self):
-        path = filedialog.askdirectory(title="选择输出目录")
+    def _browse_directory(self, title: str, target_var: ctk.StringVar):
+        """通用目录浏览对话框。"""
+        path = filedialog.askdirectory(title=title)
         if path:
-            self.output_dir_var.set(path)
+            target_var.set(path)
+
+    def _browse_output_dir(self):
+        self._browse_directory("选择输出目录", self.output_dir_var)
 
     def _setup_tooltips(self):
         """为所有参数控件附加工具提示。"""
@@ -491,13 +501,13 @@ class ParamsPanel(ctk.CTkScrollableFrame):
         self._tip(self.disable_image_cb, "勾选后跳过所有图片，只转换文字")
         self._tip(self.disable_wmf_cb,
                   "WMF 是旧版 Office 的矢量图格式，勾选后跳过此类图片")
-        image_dir_tip = "留空则默认输出到“输出目录/img”（未设置输出目录时，默认在 PPTX 同级目录/img）"
-        self._tip(self.image_dir_label, image_dir_tip)
-        self._tip(self.image_dir_entry, image_dir_tip)
-        self._tip(self.image_dir_btn, image_dir_tip)
+        image_dir_tip = '留空则默认输出到\u201c输出目录/img\u201d（未设置输出目录时，默认在 PPTX 同级目录/img）'
+        self._tip_group(
+            [self.image_dir_label, self.image_dir_entry, self.image_dir_btn],
+            image_dir_tip,
+        )
         image_width_tip = "图片在文档中的显示宽度（像素），留空则不限制"
-        self._tip(self.image_width_label, image_width_tip)
-        self._tip(self.image_width_entry, image_width_tip)
+        self._tip_group([self.image_width_label, self.image_width_entry], image_width_tip)
 
         # 内容处理
         self._tip(self.enable_color_cb, "勾选后保留文字颜色，生成颜色标记")
@@ -525,19 +535,14 @@ class ParamsPanel(ctk.CTkScrollableFrame):
             "控制 .pptx 批量转换时的并发子进程数。\n"
             "值越大通常越快，但资源占用更高，可能卡顿。"
         )
-        self._tip(self.max_workers_label, max_workers_tip)
-        self._tip(self.max_workers_entry, max_workers_tip)
+        self._tip_group([self.max_workers_label, self.max_workers_entry], max_workers_tip)
         page_tip = "只转换指定页码，如 1,3,5-10；留空则全部转换"
-        self._tip(self.page_label, page_tip)
-        self._tip(self.page_entry, page_tip)
+        self._tip_group([self.page_label, self.page_entry], page_tip)
         title_path_tip = "文本文件，每行一个关键词，匹配的文字会被识别为标题；用缩进表示层级"
-        self._tip(self.title_path_label, title_path_tip)
-        self._tip(self.title_path_entry, title_path_tip)
+        self._tip_group([self.title_path_label, self.title_path_entry], title_path_tip)
 
     def _browse_image_dir(self):
-        path = filedialog.askdirectory(title="选择图片目录")
-        if path:
-            self.image_dir_var.set(path)
+        self._browse_directory("选择图片目录", self.image_dir_var)
 
     def _browse_title_file(self):
         path = filedialog.askopenfilename(
@@ -555,27 +560,22 @@ class ParamsPanel(ctk.CTkScrollableFrame):
 
     def _on_disable_image_changed(self):
         state = "disabled" if self.disable_image_var.get() else "normal"
-        self.disable_wmf_cb.configure(state=state)
-        self.image_dir_label.configure(state=state)
-        self.image_dir_entry.configure(state=state)
-        self.image_dir_btn.configure(state=state)
-        self.image_width_label.configure(state=state)
-        self.image_width_entry.configure(state=state)
+        for widget in (
+            self.disable_wmf_cb,
+            self.image_dir_label, self.image_dir_entry, self.image_dir_btn,
+            self.image_width_label, self.image_width_entry,
+        ):
+            widget.configure(state=state)
 
     def _on_ppt_extract_images_changed(self):
         """PPT 图片提取 checkbox 联动：禁用时灰置图片目录。"""
-        if not getattr(self, "_ppt_group_enabled", False):
-            state = "disabled"
-        else:
-            state = "normal" if self.ppt_extract_images_var.get() else "disabled"
-        self.ppt_image_dir_label.configure(state=state)
-        self.ppt_image_dir_entry.configure(state=state)
-        self.ppt_image_dir_btn.configure(state=state)
+        group_enabled = getattr(self, "_ppt_group_enabled", False)
+        state = "normal" if group_enabled and self.ppt_extract_images_var.get() else "disabled"
+        for widget in (self.ppt_image_dir_label, self.ppt_image_dir_entry, self.ppt_image_dir_btn):
+            widget.configure(state=state)
 
     def _browse_ppt_image_dir(self):
-        path = filedialog.askdirectory(title="选择 PPT 图片目录")
-        if path:
-            self.ppt_image_dir_var.set(path)
+        self._browse_directory("选择 PPT 图片目录", self.ppt_image_dir_var)
 
     def get_params(self) -> Dict[str, Any]:
         """收集所有参数值。"""

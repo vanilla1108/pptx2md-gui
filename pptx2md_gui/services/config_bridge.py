@@ -22,6 +22,27 @@ def _resolve_positive_bool(
     return default_when_missing
 
 
+def _resolve_output_dir(
+    file_path: Path,
+    params: Dict[str, Any],
+    output_dir: Optional[Path] = None,
+) -> Path:
+    """从参数中确定输出目录。"""
+    if output_dir:
+        return output_dir
+    if params.get("output_dir"):
+        return Path(params["output_dir"])
+    return file_path.parent
+
+
+def _resolve_output_stem(file_path: Path, params: Dict[str, Any]) -> str:
+    """从参数中确定输出文件名主干（不含扩展名）。"""
+    stem = file_path.stem
+    if params.get("naming") == "prefix" and params.get("prefix"):
+        stem = f"{params['prefix']}_{stem}"
+    return stem
+
+
 def build_config(
     pptx_path: Path,
     params: Dict[str, Any],
@@ -37,18 +58,9 @@ def build_config(
     返回:
         可用于转换的 ConversionConfig。
     """
-    # 确定输出目录
-    if output_dir:
-        out_dir = output_dir
-    elif params.get("output_dir"):
-        out_dir = Path(params["output_dir"])
-    else:
-        out_dir = pptx_path.parent
-
-    # 确定输出文件名
-    stem = pptx_path.stem
-    if params.get("naming") == "prefix" and params.get("prefix"):
-        stem = f"{params['prefix']}_{stem}"
+    # 确定输出目录和文件名
+    out_dir = _resolve_output_dir(pptx_path, params, output_dir)
+    stem = _resolve_output_stem(pptx_path, params)
 
     # 根据格式确定输出扩展名
     output_format = params.get("output_format", "markdown").lower()
@@ -203,18 +215,9 @@ def build_ppt_config(
     """
     from pptx2md.ppt_legacy.config import ExtractConfig  # 延迟导入
 
-    # 确定输出目录
-    if output_dir:
-        out_dir = output_dir
-    elif params.get("output_dir"):
-        out_dir = Path(params["output_dir"])
-    else:
-        out_dir = ppt_path.parent
-
-    # 确定输出文件名（强制 .md）
-    stem = ppt_path.stem
-    if params.get("naming") == "prefix" and params.get("prefix"):
-        stem = f"{params['prefix']}_{stem}"
+    # 确定输出目录和文件名（强制 .md）
+    out_dir = _resolve_output_dir(ppt_path, params, output_dir)
+    stem = _resolve_output_stem(ppt_path, params)
 
     output_path = out_dir / f"{stem}.md"
     output_path = _resolve_conflict(output_path)

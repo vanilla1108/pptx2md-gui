@@ -185,10 +185,10 @@ class FilePanel(ctk.CTkFrame):
         del_btn.pack(side="right", padx=5)
         
         # Hover 效果：删除按钮在 hover 时变色，文字变色
-        def on_enter(e):
+        def on_enter(_event):
             del_btn.configure(text_color=theme.BTN_DANGER_TEXT_HOVER)
-        
-        def on_leave(e):
+
+        def on_leave(_event):
             del_btn.configure(text_color=theme.TEXT_MUTED)
 
         del_btn.bind("<Enter>", on_enter)
