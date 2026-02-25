@@ -2,10 +2,21 @@
 """PyInstaller spec file for pptx2md-gui portable build."""
 
 import os
+import re
 import sys
+import tomllib
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
+from PyInstaller.utils.win32.versioninfo import (
+    FixedFileInfo,
+    StringFileInfo,
+    StringStruct,
+    StringTable,
+    VarFileInfo,
+    VarStruct,
+    VSVersionInfo,
+)
 
 block_cipher = None
 IS_ONEFILE = os.environ.get("PPTX2MD_GUI_ONEFILE", "").strip() == "1"
@@ -15,6 +26,42 @@ IS_ONEFILE = os.environ.get("PPTX2MD_GUI_ONEFILE", "").strip() == "1"
 # ---------------------------------------------------------------------------
 
 PROJECT_ROOT = SPECPATH  # SPECPATH is already the directory containing the spec file
+
+# ---------------------------------------------------------------------------
+# Version
+# ---------------------------------------------------------------------------
+
+with open(os.path.join(PROJECT_ROOT, "pyproject.toml"), "rb") as _f:
+    _pyproject = tomllib.load(_f)
+APP_VERSION = _pyproject["tool"]["poetry"]["version"]
+
+# Parse "0.1.0b3" -> (0, 1, 0, 3) for Windows version resource
+_m = re.match(r"(\d+)\.(\d+)\.(\d+)(?:[ab](\d+))?", APP_VERSION)
+_ver_tuple = tuple(int(x or 0) for x in _m.groups())
+
+_version_info = VSVersionInfo(
+    ffi=FixedFileInfo(
+        filevers=_ver_tuple,
+        prodvers=_ver_tuple,
+    ),
+    kids=[
+        StringFileInfo([
+            StringTable("040904B0", [
+                StringStruct("CompanyName", "vanilla1108"),
+                StringStruct("FileDescription", "pptx2md GUI — PPT/PPTX to Markdown converter"),
+                StringStruct("FileVersion", APP_VERSION),
+                StringStruct("InternalName", "pptx2md-gui"),
+                StringStruct("LegalCopyright", "Apache License 2.0"),
+                StringStruct("OriginalFilename", f"pptx2md-gui-{APP_VERSION}.exe"),
+                StringStruct("ProductName", "pptx2md-gui"),
+                StringStruct("ProductVersion", APP_VERSION),
+            ]),
+        ]),
+        VarFileInfo([VarStruct("Translation", [0x0409, 1200])]),
+    ],
+)
+
+APP_NAME = f"pptx2md-gui-{APP_VERSION}"
 
 # ---------------------------------------------------------------------------
 # Hidden imports
@@ -171,7 +218,8 @@ if IS_ONEFILE:
         a.binaries,
         a.datas,
         [],
-        name="pptx2md-gui",
+        name=APP_NAME,
+        version=_version_info,
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -190,7 +238,8 @@ else:
         a.scripts,
         [],
         exclude_binaries=True,
-        name="pptx2md-gui",
+        name=APP_NAME,
+        version=_version_info,
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -210,5 +259,5 @@ else:
         strip=False,
         upx=False,
         upx_exclude=[],
-        name="pptx2md-gui",
+        name=APP_NAME,
     )

@@ -1,6 +1,12 @@
 # pptx2md-gui
 
-`pptx2md` 的增强版仓库：同时提供 `CLI` 和 `GUI`，支持 `.pptx` 与实验性 `.ppt` 转换。
+[ssine/pptx2md](https://github.com/ssine/pptx2md)的修改版仓库：同时提供 `CLI` 和 `GUI`，支持 `.pptx` 与实验性 `.ppt` 转换。
+
+> **⚠️ 声明**
+>
+> 本项目为**个人学习项目**，代码和功能尚不成熟，可能存在较多 Bug。
+> 不保证转换效果，也不承诺持续维护与更新。
+> 欢迎提 Issue 反馈问题，但修复时间不做保证。如果对你有帮助，欢迎自行 Fork 和修改。
 
 - 核心库目录：`pptx2md/`
 - GUI 目录：`pptx2md_gui/`

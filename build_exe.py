@@ -14,6 +14,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -21,6 +22,13 @@ BUILD_DIR = PROJECT_ROOT / "build"
 DIST_DIR = PROJECT_ROOT / "dist"
 SPEC_FILE = PROJECT_ROOT / "pptx2md_gui.spec"
 ONEFILE_ENV_VAR = "PPTX2MD_GUI_ONEFILE"
+
+
+def get_app_version() -> str:
+    """从 pyproject.toml 读取版本号。"""
+    with open(PROJECT_ROOT / "pyproject.toml", "rb") as f:
+        pyproject = tomllib.load(f)
+    return pyproject["tool"]["poetry"]["version"]
 
 
 def clean_build_artifacts():
@@ -41,6 +49,8 @@ def clean_build_artifacts():
 
 def build(use_onefile: bool = False):
     """使用 spec 文件执行 PyInstaller 打包。"""
+    version = get_app_version()
+    app_name = f"pptx2md-gui-{version}"
 
     cmd = [
         sys.executable,
@@ -55,6 +65,7 @@ def build(use_onefile: bool = False):
         print("警告: --onefile 模式更容易被杀软拦截。")
         print("如果构建失败，请先尝试不带 --onefile 的标准模式。\n")
 
+    print(f"版本: {version}")
     print(f"执行命令: {' '.join(cmd)}\n")
 
     env = os.environ.copy()
@@ -62,7 +73,7 @@ def build(use_onefile: bool = False):
 
     result = subprocess.run(cmd, cwd=str(PROJECT_ROOT), env=env)
     if result.returncode == 0:
-        output_path = DIST_DIR / "pptx2md-gui.exe" if use_onefile else DIST_DIR / "pptx2md-gui"
+        output_path = DIST_DIR / f"{app_name}.exe" if use_onefile else DIST_DIR / app_name
         print(f"\n构建成功！输出: {output_path}")
         return True
 

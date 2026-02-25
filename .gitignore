@@ -24,11 +24,13 @@ CLAUDE.md
 AGENTS.md
 GEMINI.md
 docs/
+archive/
 
 # Test Data (large binary files)
 test_pptx/
 ppt2md_script/test-ppt/
 ppt2md_script/test-output/
+tests_extract_ppt/
 
 # Test Temporaries
 test_output/

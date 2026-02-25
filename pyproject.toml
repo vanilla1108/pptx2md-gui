@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pptx2md"
-version = "0.1.0b2"
+version = "0.1.0b3"
 description = "This package converts pptx to markdown"
 repository = "https://github.com/vanilla1108/pptx2md-gui"
 authors = ["Liu Siyao <liu.siyao@qq.com>", "vanilla1108"]
