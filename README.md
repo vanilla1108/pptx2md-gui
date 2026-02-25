@@ -89,7 +89,7 @@ python build_exe.py
 ## 致谢
 
 - [ssine/pptx2md](https://github.com/ssine/pptx2md)
-- [dwml](https://pypi.org/project/dwml/)
+- [xiilei/dwml](https://github.com/xiilei/dwml)
 
 ## 许可证
 
