@@ -1,6 +1,6 @@
 # pptx2md-gui
 
-[ssine/pptx2md](https://github.com/ssine/pptx2md)的修改版仓库：同时提供 `CLI` 和 `GUI`，支持 `.pptx` 与实验性 `.ppt` 转换。
+PPT/PPTX 转 Markdown 桌面工具，提供 GUI（仅 Windows）与 CLI，基于 [ssine/pptx2md](https://github.com/ssine/pptx2md) 修改。
 
 > **⚠️ 声明**
 >
@@ -8,115 +8,83 @@
 > 不保证转换效果，也不承诺持续维护与更新。
 > 欢迎提 Issue 反馈问题，但修复时间不做保证。如果对你有帮助，欢迎自行 Fork 和修改。
 
-- 核心库目录：`pptx2md/`
-- GUI 目录：`pptx2md_gui/`
-- 测试目录：`tests/`
+## 功能
+
+- **输入**：`.pptx`、`.ppt`（实验性，需 Windows + PowerPoint）
+- **输出**：Markdown（默认）、TiddlyWiki、Madoko、Quarto
+- **支持内容**：标题、列表、强调样式、超链接、表格、图片、备注、多栏检测、部分公式与 OLE 预览图
+- **GUI 特性**：批量转换、拖放导入、参数预设、深色/浅色主题
 
 ## 快速开始
 
+### GUI（Windows 便携版）
+
+从 [Releases](https://github.com/vanilla1108/pptx2md-gui/releases) 下载 zip，解压后运行 exe 即可。
+
+### 源码运行
+
 ```bash
-# 先完成下方“依赖安装（步骤）”
+pip install -e .
+
+# CLI
 python -m pptx2md input.pptx -o out.md
+
+# GUI
 python -m pptx2md_gui
 ```
 
-## 依赖安装（步骤）
+### 可选依赖
 
-### 开发环境
+- `wand` + ImageMagick — 提高 WMF 图片转换成功率
+- Microsoft PowerPoint — `.ppt` 转换和 WMF COM 兜底必需
+
+## 已知限制
+
+- `.ppt` 为实验性功能，复杂版式可能不稳定
+- WMF 转换效果取决于系统环境（Pillow → ImageMagick → PowerPoint COM，命中即停止）
+- GUI 仅在 Windows 下验证，其他系统未经测试
+
+## 开发
+
+### 环境搭建
 
 ```bash
+# 开发
 conda activate pptx2md_gui_dev
 pip install -e ".[dev]"
-```
 
-### 打包环境
-
-```bash
-conda create -n gui_build python=3.13 pip
+# 打包
 conda activate gui_build
 pip install -e ".[build]"
 ```
 
-## 依赖说明（按场景）
-
-### 1) 核心转换依赖（CLI/GUI 共用）
-
-以下是 `pyproject.toml` 中直接声明、并被当前代码直接使用的核心依赖：
-
-- `python-pptx`
-- `rapidfuzz`
-- `Pillow`
-- `tqdm`
-- `pydantic`
-- `dwml`
-- `numpy`
-- `scipy`
-- `pywin32`（Windows 条件依赖）
-
-### 2) GUI 依赖
-
-- `customtkinter`
-- `tkinterdnd2`
-- `CTkToolTip`
-- Python 自带 `tkinter`（需你的 Python 发行版包含 Tk）
-
-说明：
-- 当前实现里 `tkinterdnd2` 是导入时硬依赖（`pptx2md_gui/app.py` 顶层导入）。
-- 若 `tkinterdnd2` 已安装但运行时 DnD 初始化失败，会退化为“点击选文件”模式。
-
-### 3) 可选依赖（仅特定能力需要）
-
-- `wand` + ImageMagick：提高 WMF 转换成功率（可选链路）。
-- Microsoft PowerPoint：`.ppt` 转换和 WMF COM 兜底都需要。
-
-可选能力由 `dev` extra 一并提供（含 `wand`）。
-
-## 功能概览
-
-- 输入格式：`.pptx`、`.ppt`（实验性，Windows + PowerPoint）
-- 输出格式：Markdown（默认）、TiddlyWiki（`--wiki`）、Madoko（`--mdk`）、Quarto（`--qmd`）
-- 支持内容：标题、列表、强调样式、超链接、表格、图片、备注、多栏检测、部分公式与 OLE 预览图
-
-WMF 转换链路（命中即停止）：
-
-1. Pillow
-2. Wand（ImageMagick）
-3. `magick` CLI
-4. PowerPoint COM 兜底
-
-## 文档导航
-
-- CLI 细节：`CLI_README.md`
-- GUI 细节：`GUI_README.md`
-- 测试说明：`tests/README.md`
-- 旧版 COM 脚本：`ppt2md_script/README.md`
-
-## 测试
+### 测试
 
 ```bash
-# 快速回归（不依赖慢测样本，不触发 COM 测试）
+# 快速回归
 python -m pytest tests -q -m "not slow and not ppt_com"
 
-# 全量测试（需要 test_pptx 样本文件）
+# 全量（需要 test_pptx/ 下的样本文件）
 python -m pytest tests -q
 ```
 
-说明：`slow` 测试依赖 `test_pptx/` 下的样本文件，若样本未放入仓库会报错。
+### GUI 打包
 
-## Windows GUI 打包
-
-```powershell
+```bash
 conda activate gui_build
 python build_exe.py
 ```
 
-输出目录为 `dist/pptx2md-gui/`。
+### 目录结构
 
-## 已知限制
+| 目录 | 说明 |
+|------|------|
+| `pptx2md/` | 核心转换库 |
+| `pptx2md_gui/` | GUI 应用 |
+| `tests/` | 测试 |
+| `ppt2md_script/` | 旧版 COM 脚本 |
 
-- `.ppt` 仍是实验性能力，复杂版式存在不稳定性。
-- WMF 转换受系统环境影响较大（ImageMagick/COM 可用性）。
-- GUI 主要在 Windows 场景验证，其他系统未做持续验证。
+详细文档：[CLI](CLI_README.md) · [GUI](GUI_README.md) · [测试](tests/README.md)
 
 ## 致谢
 
@@ -125,4 +93,4 @@ python build_exe.py
 
 ## 许可证
 
-Apache License 2.0，见 `LICENSE`。
+Apache License 2.0，见 [LICENSE](LICENSE)。
