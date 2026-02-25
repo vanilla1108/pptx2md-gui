@@ -1,5 +1,6 @@
 """参数面板组件 - 主窗口右侧。"""
 
+import os
 from pathlib import Path
 import sys
 from tkinter import filedialog
@@ -9,6 +10,8 @@ import customtkinter as ctk
 from CTkToolTip import CTkToolTip
 
 from .. import theme
+
+_AUTO_WORKER_CAP = 4  # 与 converter._MAX_AUTO_WORKERS 保持一致
 
 
 class ParamsPanel(ctk.CTkScrollableFrame):
@@ -306,6 +309,23 @@ class ParamsPanel(ctk.CTkScrollableFrame):
         """创建高级选项分组。"""
         content = self._create_group_frame("高级选项", badge_tip="仅对 .pptx 文件生效")
 
+        # 并发进程数
+        parallel_frame = ctk.CTkFrame(content, fg_color="transparent")
+        parallel_frame.pack(fill="x", pady=3)
+
+        self.max_workers_label = ctk.CTkLabel(parallel_frame, text="并发进程数:", anchor="w")
+        self.max_workers_label.pack(side="left")
+        self.max_workers_var = ctk.StringVar()
+        self.max_workers_entry = ctk.CTkEntry(
+            parallel_frame,
+            textvariable=self.max_workers_var,
+            width=100,
+            placeholder_text="留空自动",
+        )
+        self.max_workers_entry.pack(side="left", padx=5)
+        auto_workers = max(1, min(_AUTO_WORKER_CAP, os.cpu_count() or 1))
+        ctk.CTkLabel(parallel_frame, text=f"（留空自动={auto_workers}）").pack(side="left")
+
         # 多列布局检测
         self.try_multi_column_var = ctk.BooleanVar()
         self.try_multi_column_cb = ctk.CTkCheckBox(
@@ -501,6 +521,12 @@ class ParamsPanel(ctk.CTkScrollableFrame):
         # 高级选项
         self._tip(self.try_multi_column_cb,
                   "自动识别幻灯片中的多列排版并正确转换")
+        max_workers_tip = (
+            "控制 .pptx 批量转换时的并发子进程数。\n"
+            "值越大通常越快，但资源占用更高，可能卡顿。"
+        )
+        self._tip(self.max_workers_label, max_workers_tip)
+        self._tip(self.max_workers_entry, max_workers_tip)
         page_tip = "只转换指定页码，如 1,3,5-10；留空则全部转换"
         self._tip(self.page_label, page_tip)
         self._tip(self.page_entry, page_tip)
@@ -571,6 +597,7 @@ class ParamsPanel(ctk.CTkScrollableFrame):
             "compress_blank_lines": self.compress_blank_lines_var.get(),
             "min_block_size": self.min_block_size_var.get(),
             "try_multi_column": self.try_multi_column_var.get(),
+            "max_workers": self.max_workers_var.get(),
             "page": self.page_var.get(),
             "title_path": self.title_path_var.get(),
             # PPT 转换选项
@@ -633,6 +660,8 @@ class ParamsPanel(ctk.CTkScrollableFrame):
             self.min_block_size_var.set(str(params["min_block_size"]))
         if "try_multi_column" in params:
             self.try_multi_column_var.set(params["try_multi_column"])
+        if "max_workers" in params:
+            self.max_workers_var.set(str(params["max_workers"]) if params["max_workers"] else "")
         if "ppt_debug" in params:
             self.ppt_debug_var.set(params["ppt_debug"])
         if "ppt_ui" in params:
@@ -663,6 +692,7 @@ class ParamsPanel(ctk.CTkScrollableFrame):
         self.compress_blank_lines_var.set(True)
         self.min_block_size_var.set("15")
         self.try_multi_column_var.set(False)
+        self.max_workers_var.set("")
         self.page_var.set("")
         self.title_path_var.set("")
         self._on_disable_image_changed()

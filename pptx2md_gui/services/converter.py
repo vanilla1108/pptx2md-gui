@@ -4,15 +4,19 @@ import logging
 import multiprocessing as mp
 import queue
 import threading
+import time
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .config_bridge import build_config, build_ppt_config
 
 _SUBPROCESS_LOG = "log"
 _SUBPROCESS_PROGRESS = "slide_progress"
 _SUBPROCESS_RESULT = "result"
+_MAX_AUTO_WORKERS = 4
+_POLL_INTERVAL_SEC = 0.05
 
 
 @dataclass
@@ -23,6 +27,17 @@ class ConversionResults:
     failed_count: int = 0
     total_count: int = 0
     failed_files: List[Tuple[Path, str]] = field(default_factory=list)
+
+
+@dataclass
+class _RunningSubprocessTask:
+    """父线程维护的子进程任务状态。"""
+
+    file_idx: int
+    file_path: Path
+    process: Any
+    msg_queue: Any
+    result_payload: Optional[dict] = None
 
 
 class QueueLogHandler(logging.Handler):
@@ -171,16 +186,131 @@ class ConversionWorker(threading.Thread):
         self.on_complete = on_complete
         self._results = ConversionResults(total_count=len(files))
         self._mp_ctx = mp.get_context("spawn")
+        self._file_progress: Dict[int, float] = {idx: 0.0 for idx in range(len(files))}
+        self._max_workers = self._resolve_max_workers()
 
     def run(self):
         """执行转换任务。"""
 
-        self.log_queue.put(("INFO", f"开始转换任务，共 {len(self.files)} 个文件"))
+        total = len(self.files)
+        if total == 0:
+            if self.on_complete:
+                self.on_complete(self._results)
+            return
 
-        for file_idx, file_path in enumerate(self.files):
+        self.log_queue.put(("INFO", f"开始转换任务，共 {total} 个文件"))
+
+        all_files = self._indexed_files()
+        pptx_files, ppt_files = self._split_files_by_format(all_files)
+        cancelled = False
+        if ppt_files and pptx_files:
+            self.log_queue.put((
+                "INFO",
+                "检测到混合格式：将先并发转换 .pptx，再串行转换 .ppt（避免 COM 冲突）",
+            ))
+            if self._max_workers > 1:
+                effective_workers = self._effective_workers_for(pptx_files)
+                self.log_queue.put(("INFO", f".pptx 并发转换已启用：最多 {effective_workers} 个子进程"))
+                cancelled = self._run_subprocess_batch(pptx_files, effective_workers)
+            else:
+                cancelled = self._run_sequential_files(pptx_files)
+
+            if not cancelled and not self.cancel_event.is_set():
+                self.log_queue.put(("INFO", "开始串行转换 .ppt 文件"))
+                cancelled = self._run_sequential_files(ppt_files)
+        elif self._max_workers > 1 and not ppt_files:
+            effective_workers = self._effective_workers_for(all_files)
+            self.log_queue.put(("INFO", f"并发转换已启用：最多 {effective_workers} 个子进程"))
+            cancelled = self._run_subprocess_batch(all_files, effective_workers)
+        else:
+            if self._max_workers > 1 and ppt_files:
+                self.log_queue.put(("WARNING", "检测到 .ppt 文件，已自动切换为串行模式以避免 COM 冲突"))
+            cancelled = self._run_sequential_files(all_files)
+
+        if cancelled or self.cancel_event.is_set():
+            self.log_queue.put(("WARNING", "用户取消转换"))
+        else:
+            self.log_queue.put(("INFO", "═" * 40))
+            self.log_queue.put((
+                "INFO",
+                f"转换完成！成功: {self._results.success_count}, "
+                f"失败: {self._results.failed_count}, 总计: {self._results.total_count}",
+            ))
+
+        if self.on_complete:
+            self.on_complete(self._results)
+
+    def _indexed_files(self) -> List[Tuple[int, Path]]:
+        """返回带原始索引的文件列表。"""
+        return list(enumerate(self.files))
+
+    @staticmethod
+    def _split_files_by_format(
+        indexed_files: List[Tuple[int, Path]],
+    ) -> Tuple[List[Tuple[int, Path]], List[Tuple[int, Path]]]:
+        """拆分为 .pptx 列表与 .ppt 列表（保持原始相对顺序）。"""
+
+        pptx_files: List[Tuple[int, Path]] = []
+        ppt_files: List[Tuple[int, Path]] = []
+        for file_idx, file_path in indexed_files:
+            if file_path.suffix.lower() == ".ppt":
+                ppt_files.append((file_idx, file_path))
+            else:
+                pptx_files.append((file_idx, file_path))
+        return pptx_files, ppt_files
+
+    def _resolve_max_workers(self) -> int:
+        """解析并发子进程数（空值时自动）。"""
+        if len(self.files) <= 1:
+            return 1
+
+        requested = self._parse_requested_max_workers()
+        if requested is not None:
+            return min(max(1, requested), len(self.files))
+
+        try:
+            cpu_count = mp.cpu_count()
+        except NotImplementedError:
+            cpu_count = 1
+
+        auto_workers = max(1, min(_MAX_AUTO_WORKERS, cpu_count))
+        return min(auto_workers, len(self.files))
+
+    def _effective_workers_for(self, files: List[Tuple[int, Path]]) -> int:
+        """计算某一批文件的有效并发上限。"""
+
+        if not files:
+            return 1
+        return max(1, min(self._max_workers, len(files)))
+
+    def _parse_requested_max_workers(self) -> Optional[int]:
+        """读取用户配置的并发数（允许为空）。"""
+        raw_value = self.params.get("max_workers")
+        if raw_value is None:
+            return None
+
+        text = str(raw_value).strip()
+        if not text:
+            return None
+
+        try:
+            value = int(text)
+        except (TypeError, ValueError):
+            self.log_queue.put(("WARNING", f"并发进程数无效（{raw_value}），已回退自动模式"))
+            return None
+
+        if value <= 0:
+            self.log_queue.put(("WARNING", f"并发进程数需大于 0（当前: {raw_value}），已回退自动模式"))
+            return None
+
+        return value
+
+    def _run_sequential_files(self, files: List[Tuple[int, Path]]) -> bool:
+        """串行执行指定文件列表（含子进程失败兜底）。"""
+
+        for file_idx, file_path in files:
             if self.cancel_event.is_set():
-                self.log_queue.put(("WARNING", "用户取消转换"))
-                break
+                return True
 
             self.log_queue.put(("INFO", f"正在处理: {file_path.name}"))
 
@@ -194,30 +324,144 @@ class ConversionWorker(threading.Thread):
                 success, detail = self._run_single_file_in_process(file_path, file_idx)
 
             if success is None:
-                self.log_queue.put(("WARNING", "用户取消转换"))
-                break
+                return True
 
-            if success:
-                self._results.success_count += 1
-            else:
-                self._results.failed_count += 1
-                self._results.failed_files.append((file_path, detail))
-                if detail.startswith("子进程"):
-                    self.log_queue.put(("ERROR", f"{file_path.name} 转换失败: {detail}"))
+            self._finalize_file_result(file_idx, file_path, success, detail)
 
-            overall_progress = (file_idx + 1) / len(self.files)
-            self.progress_callback(overall_progress, f"已完成 {file_idx + 1}/{len(self.files)}")
+        return False
 
-        if not self.cancel_event.is_set():
-            self.log_queue.put(("INFO", "═" * 40))
-            self.log_queue.put((
-                "INFO",
-                f"转换完成！成功: {self._results.success_count}, "
-                f"失败: {self._results.failed_count}, 总计: {self._results.total_count}",
-            ))
+    def _run_subprocess_batch(self, files: List[Tuple[int, Path]], max_workers: int) -> bool:
+        """并发执行一批文件的子进程转换。"""
 
-        if self.on_complete:
-            self.on_complete(self._results)
+        pending = deque(files)
+        running: Dict[int, _RunningSubprocessTask] = {}
+
+        while pending or running:
+            if self.cancel_event.is_set():
+                self._terminate_running_tasks(running)
+                return True
+
+            while pending and len(running) < max_workers:
+                file_idx, file_path = pending.popleft()
+                self.log_queue.put(("INFO", f"正在处理: {file_path.name}"))
+
+                try:
+                    task = self._start_subprocess_task(file_idx, file_path)
+                except Exception as exc:
+                    error_message = f"子进程启动失败: {str(exc) or exc.__class__.__name__}"
+                    self.log_queue.put(("ERROR", f"{file_path.name} 转换失败: {error_message}"))
+                    self._finalize_file_result(file_idx, file_path, False, error_message)
+                    continue
+
+                running[file_idx] = task
+
+            had_activity = False
+            finished_indices: List[int] = []
+            for file_idx, task in list(running.items()):
+                drained_payload = self._drain_subprocess_messages(task.msg_queue, task.file_path, task.file_idx)
+                if drained_payload is not None:
+                    task.result_payload = drained_payload
+                    had_activity = True
+
+                if task.process.is_alive():
+                    continue
+
+                task.process.join()
+                drained_payload = self._drain_subprocess_messages(task.msg_queue, task.file_path, task.file_idx)
+                if drained_payload is not None:
+                    task.result_payload = drained_payload
+
+                success, detail = self._resolve_subprocess_result(task.process, task.result_payload)
+                self._finalize_file_result(task.file_idx, task.file_path, success, detail)
+                self._close_msg_queue(task.msg_queue)
+                finished_indices.append(file_idx)
+                had_activity = True
+
+            for file_idx in finished_indices:
+                running.pop(file_idx, None)
+
+            if not had_activity:
+                time.sleep(_POLL_INTERVAL_SEC)
+
+        return False
+
+    def _start_subprocess_task(self, file_idx: int, file_path: Path) -> _RunningSubprocessTask:
+        """启动单文件子进程任务。"""
+
+        msg_queue = self._mp_ctx.Queue()
+        try:
+            process = self._mp_ctx.Process(
+                target=_convert_single_file_subprocess,
+                args=(str(file_path), self.params, msg_queue),
+                daemon=False,
+            )
+            process.start()
+        except Exception:
+            self._close_msg_queue(msg_queue)
+            raise
+
+        return _RunningSubprocessTask(
+            file_idx=file_idx,
+            file_path=file_path,
+            process=process,
+            msg_queue=msg_queue,
+        )
+
+    def _terminate_running_tasks(self, running: Dict[int, _RunningSubprocessTask]):
+        """终止并回收所有在跑子进程。"""
+
+        for task in running.values():
+            try:
+                task.process.terminate()
+            except Exception:
+                pass
+
+        for task in running.values():
+            try:
+                task.process.join(timeout=5)
+            except Exception:
+                pass
+
+            self._drain_subprocess_messages(task.msg_queue, task.file_path, task.file_idx)
+            self._close_msg_queue(task.msg_queue)
+
+        running.clear()
+
+    def _close_msg_queue(self, msg_queue: Any):
+        """关闭子进程消息队列。"""
+
+        try:
+            msg_queue.close()
+            msg_queue.join_thread()
+        except Exception:
+            pass
+
+    def _finalize_file_result(self, file_idx: int, file_path: Path, success: bool, detail: str):
+        """统一落盘单文件结果并更新总体进度。"""
+
+        if success:
+            self._results.success_count += 1
+        else:
+            self._results.failed_count += 1
+            self._results.failed_files.append((file_path, detail))
+            if detail.startswith("子进程"):
+                self.log_queue.put(("ERROR", f"{file_path.name} 转换失败: {detail}"))
+
+        done_count = self._results.success_count + self._results.failed_count
+        self._update_file_progress(file_idx, 1.0, f"已完成 {done_count}/{len(self.files)}")
+
+    def _update_file_progress(self, file_idx: int, progress: float, status: str):
+        """按文件粒度更新总体进度。"""
+
+        if not self.files or file_idx not in self._file_progress:
+            return
+
+        normalized = max(0.0, min(1.0, float(progress)))
+        prev = self._file_progress[file_idx]
+        self._file_progress[file_idx] = max(prev, normalized)
+
+        overall = sum(self._file_progress.values()) / len(self.files)
+        self.progress_callback(overall, status)
 
     def _run_single_file_in_subprocess(self, file_path: Path, file_idx: int) -> Tuple[Optional[bool], str]:
         """在子进程中执行单文件转换。
@@ -264,11 +508,13 @@ class ConversionWorker(threading.Thread):
             if drained_payload is not None:
                 result_payload = drained_payload
         finally:
-            try:
-                msg_queue.close()
-                msg_queue.join_thread()
-            except Exception:
-                pass
+            self._close_msg_queue(msg_queue)
+
+        return self._resolve_subprocess_result(process, result_payload)
+
+    @staticmethod
+    def _resolve_subprocess_result(process: Any, result_payload: Optional[dict]) -> Tuple[bool, str]:
+        """根据子进程退出状态与消息负载推断结果。"""
 
         if result_payload and result_payload.get("success"):
             return True, str(result_payload.get("output_name", ""))
@@ -309,11 +555,8 @@ class ConversionWorker(threading.Thread):
         def progress_cb(current, total, name):
             if total <= 0:
                 return
-            file_progress = file_idx / len(self.files)
-            slide_progress_val = (current / total) / len(self.files)
-            overall = file_progress + slide_progress_val
             status = f"正在处理: {file_path.name} ({int(current)}/{int(total)})"
-            self.progress_callback(overall, status)
+            self._update_file_progress(file_idx, current / total, status)
 
         convert(
             config,
@@ -354,11 +597,8 @@ class ConversionWorker(threading.Thread):
         def progress_cb(current, total, name):
             if total <= 0:
                 return
-            file_progress = file_idx / len(self.files)
-            slide_progress_val = (current / total) / len(self.files)
-            overall = file_progress + slide_progress_val
             status = f"正在处理: {file_path.name} ({int(current)}/{int(total)})"
-            self.progress_callback(overall, status)
+            self._update_file_progress(file_idx, current / total, status)
 
         success = convert_ppt(
             config,
@@ -425,11 +665,8 @@ class ConversionWorker(threading.Thread):
             if total <= 0:
                 return None
 
-            file_progress = file_idx / len(self.files)
-            slide_progress_val = (current / total) / len(self.files)
-            overall = file_progress + slide_progress_val
             status = f"正在处理: {file_path.name} ({int(current)}/{int(total)})"
-            self.progress_callback(overall, status)
+            self._update_file_progress(file_idx, current / total, status)
             return None
 
         if kind == _SUBPROCESS_RESULT and len(message) >= 2 and isinstance(message[1], dict):
