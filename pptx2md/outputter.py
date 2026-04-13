@@ -17,7 +17,7 @@
 import os
 import re
 import urllib.parse
-from typing import List
+from typing import Callable, List
 
 from rapidfuzz import fuzz
 
@@ -156,12 +156,60 @@ class Formatter:
     def put_list_footer(self):
         self.put_para('')
 
+    @staticmethod
+    def _wrap_preserving_edge_whitespace(text: str, wrapper: Callable[[str], str]) -> str:
+        match = re.match(r'^(\s*)(.*?)(\s*)$', text, re.S)
+        if not match:
+            return wrapper(text)
+
+        leading_ws, core_text, trailing_ws = match.groups()
+        if core_text == '':
+            return text
+        return leading_ws + wrapper(core_text) + trailing_ws
+
+    @staticmethod
+    def _resolve_effective_emphasis(run: TextRun) -> str | None:
+        if run.style.is_accent:
+            return 'accent'
+        if run.style.is_strong:
+            return 'strong'
+        return None
+
+    def _get_effective_merge_key(self, run: TextRun):
+        if run.style.is_math:
+            return ('math',)
+
+        return (
+            'text',
+            self._resolve_effective_emphasis(run),
+            run.style.hyperlink,
+            None if self.config.disable_color else run.style.color_rgb,
+        )
+
+    def _can_merge_runs(self, left: TextRun, right: TextRun) -> bool:
+        return self._get_effective_merge_key(left) == self._get_effective_merge_key(right)
+
+    def _merge_adjacent_runs(self, runs: List[TextRun]) -> List[TextRun]:
+        merged_runs: List[TextRun] = []
+        for run in runs:
+            if run.text == '':
+                continue
+
+            if merged_runs and self._can_merge_runs(merged_runs[-1], run):
+                merged_runs[-1] = merged_runs[-1].model_copy(
+                    update={'text': merged_runs[-1].text + run.text}
+                )
+                continue
+
+            # 避免深拷贝 python-pptx 的颜色对象（如 RGBColor）导致异常；
+            # 这里仅需复制 TextRun 容器本身，复用样式对象即可。
+            merged_runs.append(run.model_copy())
+        return merged_runs
+
     def get_formatted_runs(self, runs: List[TextRun]):
         res = ''
-        for run in runs:
+        for run in self._merge_adjacent_runs(runs):
             text = run.text
-            if text == '':
-                continue
 
             if run.style.is_math:
                 res += self.get_math(text)
@@ -171,13 +219,19 @@ class Formatter:
                 text = self.get_escaped(text)
 
             if run.style.hyperlink:
-                text = self.get_hyperlink(text, run.style.hyperlink)
+                text = self._wrap_preserving_edge_whitespace(
+                    text,
+                    lambda value, url=run.style.hyperlink: self.get_hyperlink(value, url),
+                )
             if run.style.is_accent:
-                text = self.get_accent(text)
+                text = self._wrap_preserving_edge_whitespace(text, self.get_accent)
             elif run.style.is_strong:
-                text = self.get_strong(text)
+                text = self._wrap_preserving_edge_whitespace(text, self.get_strong)
             if run.style.color_rgb and not self.config.disable_color:
-                text = self.get_colored(text, run.style.color_rgb)
+                text = self._wrap_preserving_edge_whitespace(
+                    text,
+                    lambda value, rgb=run.style.color_rgb: self.get_colored(value, rgb),
+                )
 
             res += text
         return res.strip()
@@ -290,13 +344,13 @@ class MarkdownFormatter(Formatter):
         self.ofile.write('\n'.join([gen_table_row(row) for row in table[1:]]) + '\n\n')
 
     def get_accent(self, text):
-        return ' _' + text + '_ '
+        return '*' + text + '*'
 
     def get_strong(self, text):
-        return ' __' + text + '__ '
+        return '**' + text + '**'
 
     def get_colored(self, text, rgb):
-        return ' <span style="color:%s">%s</span> ' % (rgb_to_hex(rgb), text)
+        return '<span style="color:%s">%s</span>' % (rgb_to_hex(rgb), text)
 
     def get_hyperlink(self, text, url):
         return '[' + text + '](' + url + ')'
@@ -386,13 +440,13 @@ class MadokoFormatter(Formatter):
             self.ofile.write('~\n\n')
 
     def get_accent(self, text):
-        return ' _' + text + '_ '
+        return '*' + text + '*'
 
     def get_strong(self, text):
-        return ' __' + text + '__ '
+        return '**' + text + '**'
 
     def get_colored(self, text, rgb):
-        return ' <span style="color:%s">%s</span> ' % (rgb_to_hex(rgb), text)
+        return '<span style="color:%s">%s</span>' % (rgb_to_hex(rgb), text)
 
     def get_hyperlink(self, text, url):
         return '[' + text + '](' + url + ')'
@@ -561,13 +615,13 @@ format:
         self.ofile.write('\n'.join([gen_table_row(row) for row in table[1:]]) + '\n\n')
 
     def get_accent(self, text):
-        return ' _' + text + '_ '
+        return '*' + text + '*'
 
     def get_strong(self, text):
-        return ' __' + text + '__ '
+        return '**' + text + '**'
 
     def get_colored(self, text, rgb):
-        return ' <span style="color:%s">%s</span> ' % (rgb_to_hex(rgb), text)
+        return '<span style="color:%s">%s</span>' % (rgb_to_hex(rgb), text)
 
     def get_hyperlink(self, text, url):
         return '[' + text + '](' + url + ')'
