@@ -10,6 +10,7 @@
 """
 
 import argparse
+import hashlib
 import os
 import shutil
 import subprocess
@@ -34,6 +35,84 @@ REQUIRED_RUNTIME_FILES = (
     "libbz2.dll",
     "libmpdec-4.dll",
 )
+REQUIRED_TCL_DATA_FILES = (
+    Path("_tcl_data") / "init.tcl",
+    Path("_tk_data") / "tk.tcl",
+)
+
+
+def _iter_unique_prefixes():
+    """返回当前解释器相关的唯一前缀目录（已解析绝对路径）。"""
+    seen = set()
+    for raw_prefix in (sys.prefix, sys.exec_prefix, sys.base_prefix):
+        if not raw_prefix:
+            continue
+        try:
+            resolved = Path(raw_prefix).resolve()
+        except OSError:
+            resolved = Path(os.path.abspath(raw_prefix))
+        normalized = os.path.normcase(str(resolved))
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        yield resolved
+
+
+def _prepare_build_env(use_onefile: bool) -> dict[str, str]:
+    """为 PyInstaller 构建准备环境变量，优先使用当前解释器环境中的 DLL。"""
+    env = os.environ.copy()
+    env[ONEFILE_ENV_VAR] = "1" if use_onefile else "0"
+
+    if sys.platform == "win32":
+        preferred_paths = []
+        seen = set()
+        for prefix in _iter_unique_prefixes():
+            for candidate in (
+                prefix,
+                prefix / "Scripts",
+                prefix / "Library" / "bin",
+                prefix / "DLLs",
+            ):
+                if not candidate.is_dir():
+                    continue
+                resolved = str(candidate)
+                normalized = os.path.normcase(resolved)
+                if normalized in seen:
+                    continue
+                seen.add(normalized)
+                preferred_paths.append(resolved)
+
+        current_path = env.get("PATH", "")
+        env["PATH"] = os.pathsep.join(preferred_paths + ([current_path] if current_path else []))
+
+    return env
+
+
+def _sha256(path: Path) -> str:
+    """计算文件 SHA256，用于校验打包产物是否来自当前构建环境。"""
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _find_env_runtime_file(name: str) -> Path | None:
+    """在当前解释器环境中查找指定运行时文件。"""
+    for prefix in _iter_unique_prefixes():
+        candidate = prefix / "Library" / "bin" / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _text_mentions_path(text: str, path: Path) -> bool:
+    """兼容正反斜杠，判断文本中是否包含给定路径。"""
+    candidates = {
+        str(path).lower(),
+        str(path).replace("\\", "/").lower(),
+    }
+    return any(candidate in text for candidate in candidates)
 
 
 def get_app_version() -> str:
@@ -69,6 +148,23 @@ def validate_gui_runtime(output_path: Path, use_onefile: bool) -> bool:
 
         toc_text = analysis_toc.read_text(encoding="utf-8", errors="ignore").lower()
         missing = [name for name in REQUIRED_RUNTIME_FILES if name.lower() not in toc_text]
+
+        missing_data_files = [
+            str(rel_path).replace("\\", "/")
+            for rel_path in REQUIRED_TCL_DATA_FILES
+            if not _text_mentions_path(toc_text, rel_path)
+        ]
+        if missing_data_files:
+            print("GUI 运行时校验失败，缺少以下 Tcl/Tk 脚本文件:")
+            for rel_path in missing_data_files:
+                print(f"  - {rel_path}")
+            return False
+
+        for name in ("tcl86t.dll", "tk86t.dll"):
+            expected_source = _find_env_runtime_file(name)
+            if expected_source and not _text_mentions_path(toc_text, expected_source):
+                print(f"GUI 运行时校验失败，{name} 不是从当前构建环境收集的: {expected_source}")
+                return False
     else:
         internal_dir = output_path / "_internal"
         if not internal_dir.exists():
@@ -77,6 +173,28 @@ def validate_gui_runtime(output_path: Path, use_onefile: bool) -> bool:
 
         packaged_names = {path.name.lower() for path in internal_dir.iterdir()}
         missing = [name for name in REQUIRED_RUNTIME_FILES if name.lower() not in packaged_names]
+
+        missing_data_files = [
+            str(rel_path).replace("\\", "/")
+            for rel_path in REQUIRED_TCL_DATA_FILES
+            if not (internal_dir / rel_path).exists()
+        ]
+        if missing_data_files:
+            print("GUI 运行时校验失败，缺少以下 Tcl/Tk 脚本文件:")
+            for rel_path in missing_data_files:
+                print(f"  - {rel_path}")
+            return False
+
+        for name in ("tcl86t.dll", "tk86t.dll"):
+            expected_source = _find_env_runtime_file(name)
+            packaged_file = internal_dir / name
+            if not expected_source or not packaged_file.is_file():
+                continue
+            if _sha256(expected_source) != _sha256(packaged_file):
+                print(f"GUI 运行时校验失败，{name} 不是当前构建环境中的版本:")
+                print(f"  - 期望来源: {expected_source}")
+                print(f"  - 实际产物: {packaged_file}")
+                return False
 
     if missing:
         print("GUI 运行时校验失败，缺少以下关键文件:")
@@ -109,8 +227,7 @@ def build(use_onefile: bool = False):
     print(f"版本: {version}")
     print(f"执行命令: {' '.join(cmd)}\n")
 
-    env = os.environ.copy()
-    env[ONEFILE_ENV_VAR] = "1" if use_onefile else "0"
+    env = _prepare_build_env(use_onefile)
 
     result = subprocess.run(cmd, cwd=str(PROJECT_ROOT), env=env)
     if result.returncode == 0:

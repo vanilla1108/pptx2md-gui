@@ -36,7 +36,7 @@ with open(os.path.join(PROJECT_ROOT, "pyproject.toml"), "rb") as _f:
     _pyproject = tomllib.load(_f)
 APP_VERSION = _pyproject["tool"]["poetry"]["version"]
 
-# Parse "0.1.0b4" -> (0, 1, 0, 4) for Windows version resource
+# Parse "0.1.0b5" -> (0, 1, 0, 5) for Windows version resource
 _m = re.match(r"(\d+)\.(\d+)\.(\d+)(?:[ab](\d+))?", APP_VERSION)
 _ver_tuple = tuple(int(x or 0) for x in _m.groups())
 
@@ -132,6 +132,39 @@ datas = []
 binaries = []
 
 
+def _iter_unique_prefix_roots():
+    """返回当前解释器相关的唯一前缀目录。"""
+    seen = set()
+    for raw_prefix in (sys.prefix, sys.base_prefix):
+        if not raw_prefix:
+            continue
+        try:
+            resolved = Path(raw_prefix).resolve()
+        except OSError:
+            resolved = Path(os.path.abspath(raw_prefix))
+        normalized = os.path.normcase(str(resolved))
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        yield resolved
+
+
+def _is_within_prefix_roots(path: Path) -> bool:
+    """判断文件是否位于当前解释器环境目录下。"""
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = Path(os.path.abspath(path))
+
+    for prefix_root in _iter_unique_prefix_roots():
+        try:
+            resolved.relative_to(prefix_root)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
 def _append_binary(source_path, destdir="."):
     """向 binaries 中追加单个动态库，自动忽略缺失项和重复项。"""
     if not source_path:
@@ -152,6 +185,22 @@ def _append_binary(source_path, destdir="."):
 
     binaries.append((str(source), destdir))
 
+
+def _append_env_scoped_binary(source_path, destdir="."):
+    """仅收集当前解释器环境内的动态库，避免 PATH 上的同名外部 DLL 混入。"""
+    if not source_path:
+        return
+
+    source = Path(source_path)
+    if not source.is_file():
+        return
+
+    if not _is_within_prefix_roots(source):
+        print(f"Skipping external binary outside current env: {source}")
+        return
+
+    _append_binary(source, destdir)
+
 # customtkinter theme JSON files + assets
 datas += collect_data_files("customtkinter")
 
@@ -168,10 +217,12 @@ datas += collect_data_files("pptx")
 if sys.platform == "win32":
     binaries += collect_dynamic_libs("pywin32_system32")
 
-# Tcl/Tk runtime: conda + Python 3.13 下 PyInstaller 可能漏收集 tk86t.dll，
-# 导致运行时导入 _tkinter 失败，这里显式补齐 Tk/Tcl 共享库。
-_append_binary(getattr(tcltk_info, "tcl_shared_library", None))
-_append_binary(getattr(tcltk_info, "tk_shared_library", None))
+# Tcl/Tk runtime:
+# 1. 让 PyInstaller 的 tcltk_info 参与收集；
+# 2. 但只接受当前解释器环境内的 DLL，避免 Graphviz 等 PATH 前置软件把
+#    旧版 tcl86t.dll / tk86t.dll 混入，造成 _tcl_data 与 DLL 版本不一致。
+_append_env_scoped_binary(getattr(tcltk_info, "tcl_shared_library", None))
+_append_env_scoped_binary(getattr(tcltk_info, "tk_shared_library", None))
 
 if sys.platform == "win32":
     # Conda 会把部分标准库扩展的底层依赖放到 Library/bin，PyInstaller 在
