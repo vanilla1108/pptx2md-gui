@@ -116,6 +116,10 @@ WMF 转换会按以下链路尝试：Pillow -> Wand -> ImageMagick CLI -> PowerP
 - `wand` + ImageMagick：提升 WMF 转换成功率
 - Microsoft PowerPoint：`.ppt` 路由与 WMF COM 兜底都需要
 
+注意：
+- 若本机安装了 WPS，`PowerPoint.Application` 的 COM 注册可能被 WPS 接管。
+- 当前实现会检测实际绑定到的可执行文件；如果发现落到 WPS，会直接报错提示，避免把 WPS 误当成 Microsoft PowerPoint。
+
 可通过环境变量调节 WMF 行为（见 `pptx2md/parser.py`）：
 - `PPTX2MD_WMF_COM_FALLBACK`
 - `PPTX2MD_WMF_COM_EXPORT_WIDTH`

@@ -72,7 +72,48 @@ class TestCheckEnvironment:
             assert "pywin32" in reason
 
     @patch("platform.system", return_value="Windows")
-    def test_strict_initializes_and_uninitializes_com(self, _mock_sys):
+    @patch(
+        "pptx2md.ppt_legacy.get_registered_powerpoint_com_info",
+        return_value={
+            "progid": "PowerPoint.Application",
+            "clsid": "{91493441-5A91-11CF-8700-00AA0060263B}",
+            "server_command": r"D:\z_app\WPS Office\12.1.0.25222\office6\wpsoffice.exe /prometheus /wpp /Automation",
+            "server_path": r"D:\z_app\WPS Office\12.1.0.25222\office6\wpsoffice.exe",
+            "vendor": "wps",
+        },
+    )
+    def test_rejects_wps_registered_server(self, _mock_registry, _mock_sys):
+        from pptx2md.ppt_legacy import check_environment
+
+        fake_client = types.ModuleType("win32com.client")
+        fake_win32com = types.ModuleType("win32com")
+        fake_win32com.client = fake_client
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "win32com": fake_win32com,
+                "win32com.client": fake_client,
+            },
+        ):
+            ok, reason = check_environment()
+
+        assert ok is False
+        assert "WPS" in reason
+        assert "/regserver" in reason
+
+    @patch("platform.system", return_value="Windows")
+    @patch(
+        "pptx2md.ppt_legacy.get_registered_powerpoint_com_info",
+        return_value={
+            "progid": "PowerPoint.Application",
+            "clsid": "{91493441-5A91-11CF-8700-00AA0060263B}",
+            "server_command": r"C:\Program Files\Microsoft Office\Root\Office16\POWERPNT.EXE /AUTOMATION",
+            "server_path": r"C:\Program Files\Microsoft Office\Root\Office16\POWERPNT.EXE",
+            "vendor": "microsoft",
+        },
+    )
+    def test_strict_initializes_and_uninitializes_com(self, _mock_registry, _mock_sys):
         from pptx2md.ppt_legacy import check_environment
 
         state = {"co_init": 0, "co_uninit": 0, "dispatch": 0, "quit": 0}
@@ -124,7 +165,17 @@ class TestCheckEnvironment:
         assert state["quit"] == 1
 
     @patch("platform.system", return_value="Windows")
-    def test_strict_dispatch_failure_still_uninitializes_com(self, _mock_sys):
+    @patch(
+        "pptx2md.ppt_legacy.get_registered_powerpoint_com_info",
+        return_value={
+            "progid": "PowerPoint.Application",
+            "clsid": "{91493441-5A91-11CF-8700-00AA0060263B}",
+            "server_command": r"C:\Program Files\Microsoft Office\Root\Office16\POWERPNT.EXE /AUTOMATION",
+            "server_path": r"C:\Program Files\Microsoft Office\Root\Office16\POWERPNT.EXE",
+            "vendor": "microsoft",
+        },
+    )
+    def test_strict_dispatch_failure_still_uninitializes_com(self, _mock_registry, _mock_sys):
         from pptx2md.ppt_legacy import check_environment
 
         state = {"co_init": 0, "co_uninit": 0}
@@ -164,6 +215,91 @@ class TestCheckEnvironment:
         assert "PowerPoint 启动失败" in reason
         assert state["co_init"] == 1
         assert state["co_uninit"] == 1
+
+    @patch("platform.system", return_value="Windows")
+    @patch(
+        "pptx2md.ppt_legacy.get_registered_powerpoint_com_info",
+        return_value={
+            "progid": "PowerPoint.Application",
+            "clsid": "{91493441-5A91-11CF-8700-00AA0060263B}",
+            "server_command": r"C:\Program Files\Microsoft Office\Root\Office16\POWERPNT.EXE /AUTOMATION",
+            "server_path": r"C:\Program Files\Microsoft Office\Root\Office16\POWERPNT.EXE",
+            "vendor": "microsoft",
+        },
+    )
+    def test_strict_rejects_wps_runtime_binding(self, _mock_registry, _mock_sys):
+        from pptx2md.ppt_legacy import check_environment
+
+        state = {"co_init": 0, "co_uninit": 0, "quit": 0}
+
+        class _FakeApp:
+            def __init__(self):
+                self.DisplayAlerts = 1
+                self.Path = r"D:\z_app\WPS Office\12.1.0.25222\office6"
+
+            def Quit(self):
+                state["quit"] += 1
+
+        fake_client = types.ModuleType("win32com.client")
+        fake_client.DispatchEx = lambda _prog_id: _FakeApp()
+
+        fake_win32com = types.ModuleType("win32com")
+        fake_win32com.client = fake_client
+
+        fake_pythoncom = types.ModuleType("pythoncom")
+        fake_pythoncom.CoInitialize = lambda: state.__setitem__("co_init", state["co_init"] + 1)
+        fake_pythoncom.CoUninitialize = lambda: state.__setitem__("co_uninit", state["co_uninit"] + 1)
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "win32com": fake_win32com,
+                "win32com.client": fake_client,
+                "pythoncom": fake_pythoncom,
+            },
+        ):
+            ok, reason = check_environment(strict=True)
+
+        assert ok is False
+        assert "WPS" in reason
+        assert state["co_init"] == 1
+        assert state["co_uninit"] == 1
+        assert state["quit"] == 1
+
+
+class TestPowerPointComDiagnostics:
+    def test_build_repair_message_contains_regserver_command(self):
+        from pptx2md.powerpoint_com import build_powerpoint_com_repair_message
+
+        registered_info = {
+            "progid": "PowerPoint.Application",
+            "clsid": "{91493441-5A91-11CF-8700-00AA0060263B}",
+            "server_command": r"D:\z_app\WPS Office\12.1.0.25222\office6\wpsoffice.exe /prometheus /wpp /Automation",
+            "server_path": r"D:\z_app\WPS Office\12.1.0.25222\office6\wpsoffice.exe",
+            "backup_server_command": r"C:\Program Files\Microsoft Office\Root\Office16\POWERPNT.EXE /AUTOMATION",
+            "backup_server_path": r"C:\Program Files\Microsoft Office\Root\Office16\POWERPNT.EXE",
+            "vendor": "wps",
+        }
+
+        runtime_info = {
+            "name": "Microsoft PowerPoint",
+            "path": r"D:\z_app\WPS Office\12.1.0.25222\office6",
+            "version": "12.0",
+            "vendor": "wps",
+        }
+
+        message = build_powerpoint_com_repair_message(
+            registered_info=registered_info,
+            runtime_info=runtime_info,
+        )
+
+        assert "当前注册表目标" in message
+        assert "当前实际启动目标" in message
+        assert "POWERPNT.EXE" in message
+        assert "快速修复" in message
+        assert "文件打开方式" in message
+        assert "/regserver" in message
+        assert "默认办公软件保护" not in message
 
 
 class TestFileValidators:

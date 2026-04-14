@@ -109,7 +109,7 @@ def _convert_single_ppt_file(file_path: Path, params: dict, msg_queue: Any):
 
     env_ok, env_reason = check_environment(strict=True)
     if not env_ok:
-        msg_queue.put((_SUBPROCESS_LOG, "ERROR", f"[PPT] {file_path.name}: {env_reason}"))
+        msg_queue.put((_SUBPROCESS_LOG, "ERROR", f"[PPT] {file_path.name}: 环境检查未通过\n{env_reason}"))
         msg_queue.put((_SUBPROCESS_RESULT, {"success": False, "output_name": "", "error": env_reason}))
         return
 
@@ -598,7 +598,7 @@ class ConversionWorker(threading.Thread):
 
         env_ok, env_reason = check_environment(strict=True)
         if not env_ok:
-            self.log_queue.put(("ERROR", f"[PPT] {file_path.name}: {env_reason}"))
+            self.log_queue.put(("ERROR", f"[PPT] {file_path.name}: 环境检查未通过\n{env_reason}"))
             return False, env_reason
 
         fmt = str(self.params.get("output_format", "markdown")).lower()

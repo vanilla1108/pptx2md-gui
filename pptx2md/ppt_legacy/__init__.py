@@ -5,6 +5,12 @@
   若未来需支持并行转换，需改为实例化或传参模式。
 """
 
+from pptx2md.powerpoint_com import (
+    build_powerpoint_com_repair_message,
+    get_registered_powerpoint_com_info,
+    get_runtime_powerpoint_com_info,
+)
+
 
 def check_environment(strict: bool = False) -> tuple[bool, str]:
     """检测 COM 环境是否可用。
@@ -23,6 +29,10 @@ def check_environment(strict: bool = False) -> tuple[bool, str]:
     except ImportError:
         return False, "需要安装 pywin32（pip install pywin32）"
 
+    registered_info = get_registered_powerpoint_com_info()
+    if registered_info.get("vendor") == "wps":
+        return False, build_powerpoint_com_repair_message(registered_info=registered_info)
+
     if strict:
         try:
             import pythoncom
@@ -37,6 +47,12 @@ def check_environment(strict: bool = False) -> tuple[bool, str]:
             # 使用 DispatchEx 创建独立实例，避免绑定并关闭用户现有 PowerPoint 进程
             app = win32com.client.DispatchEx("PowerPoint.Application")
             app.DisplayAlerts = 0
+            runtime_info = get_runtime_powerpoint_com_info(app)
+            if runtime_info.get("vendor") == "wps":
+                return False, build_powerpoint_com_repair_message(
+                    registered_info=registered_info,
+                    runtime_info=runtime_info,
+                )
         except Exception as e:
             return False, f"PowerPoint 启动失败：{e}"
         finally:

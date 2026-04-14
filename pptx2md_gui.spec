@@ -8,6 +8,7 @@ import tomllib
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
+from PyInstaller.utils.hooks.tcl_tk import tcltk_info
 from PyInstaller.utils.win32.versioninfo import (
     FixedFileInfo,
     StringFileInfo,
@@ -35,7 +36,7 @@ with open(os.path.join(PROJECT_ROOT, "pyproject.toml"), "rb") as _f:
     _pyproject = tomllib.load(_f)
 APP_VERSION = _pyproject["tool"]["poetry"]["version"]
 
-# Parse "0.1.0b3" -> (0, 1, 0, 3) for Windows version resource
+# Parse "0.1.0b4" -> (0, 1, 0, 4) for Windows version resource
 _m = re.match(r"(\d+)\.(\d+)\.(\d+)(?:[ab](\d+))?", APP_VERSION)
 _ver_tuple = tuple(int(x or 0) for x in _m.groups())
 
@@ -130,6 +131,27 @@ hiddenimports += ["numpy", "numpy.core", "numpy.core._multiarray_umath"]
 datas = []
 binaries = []
 
+
+def _append_binary(source_path, destdir="."):
+    """向 binaries 中追加单个动态库，自动忽略缺失项和重复项。"""
+    if not source_path:
+        return
+
+    source = Path(source_path)
+    if not source.is_file():
+        return
+
+    normalized_source = os.path.normcase(str(source.resolve()))
+    for existing_source, existing_dest in binaries:
+        try:
+            existing_norm = os.path.normcase(str(Path(existing_source).resolve()))
+        except OSError:
+            existing_norm = os.path.normcase(os.path.abspath(existing_source))
+        if existing_dest == destdir and existing_norm == normalized_source:
+            return
+
+    binaries.append((str(source), destdir))
+
 # customtkinter theme JSON files + assets
 datas += collect_data_files("customtkinter")
 
@@ -145,6 +167,26 @@ datas += collect_data_files("pptx")
 # pywin32 native DLLs (pythoncom/pywintypes)
 if sys.platform == "win32":
     binaries += collect_dynamic_libs("pywin32_system32")
+
+# Tcl/Tk runtime: conda + Python 3.13 下 PyInstaller 可能漏收集 tk86t.dll，
+# 导致运行时导入 _tkinter 失败，这里显式补齐 Tk/Tcl 共享库。
+_append_binary(getattr(tcltk_info, "tcl_shared_library", None))
+_append_binary(getattr(tcltk_info, "tk_shared_library", None))
+
+if sys.platform == "win32":
+    # Conda 会把部分标准库扩展的底层依赖放到 Library/bin，PyInstaller 在
+    # 该环境下不会稳定收集它们，导致 _tkinter / _ctypes / _bz2 / _decimal
+    # 在启动阶段因缺少 DLL 直接崩溃。
+    for _base_prefix in {Path(sys.prefix), Path(sys.base_prefix)}:
+        _library_bin = _base_prefix / "Library" / "bin"
+        for _dll_name in (
+            "tcl86t.dll",
+            "tk86t.dll",
+            "ffi.dll",
+            "libbz2.dll",
+            "libmpdec-4.dll",
+        ):
+            _append_binary(_library_bin / _dll_name)
 
 # ---------------------------------------------------------------------------
 # Analysis

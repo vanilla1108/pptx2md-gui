@@ -33,6 +33,11 @@ from pptx.oxml.ns import qn
 from rapidfuzz import process as fuze_process
 from tqdm import tqdm
 
+from pptx2md.powerpoint_com import (
+    build_powerpoint_com_repair_message,
+    get_registered_powerpoint_com_info,
+    get_runtime_powerpoint_com_info,
+)
 from pptx2md.types import (
     ConversionConfig,
     GeneralSlide,
@@ -70,7 +75,15 @@ class _PowerPointComSession:
         self.close()
         import win32com.client  # type: ignore
 
-        self._app = win32com.client.Dispatch("PowerPoint.Application")
+        self._app = win32com.client.DispatchEx("PowerPoint.Application")
+        runtime_info = get_runtime_powerpoint_com_info(self._app)
+        if runtime_info.get("vendor") == "wps":
+            raise RuntimeError(
+                build_powerpoint_com_repair_message(
+                    registered_info=get_registered_powerpoint_com_info(),
+                    runtime_info=runtime_info,
+                )
+            )
         try:
             # 尽量不弹窗；某些环境下 WithWindow=False 会异常，所以用 WithWindow=True + Visible=False
             self._app.Visible = False

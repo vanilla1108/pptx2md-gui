@@ -306,7 +306,7 @@ class App(DnDCompatibleCTk):
             if env_ok:
                 self.log_panel.log("INFO", "PPT 格式转换为实验性功能，当前环境满足要求")
             else:
-                self.log_panel.log("WARNING", f"PPT 格式转换为实验性功能，{env_reason}")
+                self.log_panel.log("WARNING", f"PPT 格式转换为实验性功能，环境检查未通过\n{env_reason}")
         elif not has_ppt:
             self._ppt_warned = False
 

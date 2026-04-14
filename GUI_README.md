@@ -48,6 +48,11 @@ pip install -e ".[build]"
 
 可选能力由 `dev` extra 一并提供（含 `wand`）。
 
+### `.ppt` 与 COM 注册说明
+
+- `.ppt` 转换依赖 `PowerPoint.Application` 的 COM 自动化能力，因此程序会读取相关注册表项，用来判断当前实际绑定到哪个 COM 服务。
+- 对脚本转换来说，更推荐也更稳定的是 Microsoft PowerPoint 的 COM；可以参考说明自行切换。
+
 ## 功能概览
 
 - 支持批量添加 `.pptx/.ppt`

@@ -12,6 +12,11 @@ import time
 import traceback
 import re
 
+from pptx2md.powerpoint_com import (
+    build_powerpoint_com_repair_message,
+    get_registered_powerpoint_com_info,
+    get_runtime_powerpoint_com_info,
+)
 from pptx2md.ppt_legacy.config import ExtractConfig, ConversionCancelled
 
 from pptx2md.ppt_legacy.renderer_markdown import (
@@ -1208,7 +1213,14 @@ def _extract_ppt_content_inner(config, cancel_event,
         pythoncom.CoInitialize()
         com_initialized = True
 
-        ppt_app = win32com.client.Dispatch("PowerPoint.Application")
+        ppt_app = win32com.client.DispatchEx("PowerPoint.Application")
+        runtime_info = get_runtime_powerpoint_com_info(ppt_app)
+        if runtime_info.get("vendor") == "wps":
+            _log("ERROR", build_powerpoint_com_repair_message(
+                registered_info=get_registered_powerpoint_com_info(),
+                runtime_info=runtime_info,
+            ))
+            return False
         if ui:
             _try_call(lambda: setattr(ppt_app, "Visible", True), "extract_ppt_content: 设置Visible=True失败")
         else:

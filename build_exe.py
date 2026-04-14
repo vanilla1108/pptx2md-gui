@@ -21,7 +21,19 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 BUILD_DIR = PROJECT_ROOT / "build"
 DIST_DIR = PROJECT_ROOT / "dist"
 SPEC_FILE = PROJECT_ROOT / "pptx2md_gui.spec"
+SPEC_BUILD_DIR = BUILD_DIR / SPEC_FILE.stem
 ONEFILE_ENV_VAR = "PPTX2MD_GUI_ONEFILE"
+REQUIRED_RUNTIME_FILES = (
+    "_tkinter.pyd",
+    "_ctypes.pyd",
+    "_bz2.pyd",
+    "_decimal.pyd",
+    "tcl86t.dll",
+    "tk86t.dll",
+    "ffi.dll",
+    "libbz2.dll",
+    "libmpdec-4.dll",
+)
 
 
 def get_app_version() -> str:
@@ -45,6 +57,35 @@ def clean_build_artifacts():
             shutil.rmtree(cache_dir, ignore_errors=True)
 
     print("构建产物已清理。")
+
+
+def validate_gui_runtime(output_path: Path, use_onefile: bool) -> bool:
+    """校验打包产物中是否包含 GUI 启动所需的关键扩展和 DLL。"""
+    if use_onefile:
+        analysis_toc = SPEC_BUILD_DIR / "Analysis-00.toc"
+        if not analysis_toc.exists():
+            print(f"未找到分析文件，无法校验 Tk 运行时: {analysis_toc}")
+            return False
+
+        toc_text = analysis_toc.read_text(encoding="utf-8", errors="ignore").lower()
+        missing = [name for name in REQUIRED_RUNTIME_FILES if name.lower() not in toc_text]
+    else:
+        internal_dir = output_path / "_internal"
+        if not internal_dir.exists():
+            print(f"未找到 onedir 运行时目录: {internal_dir}")
+            return False
+
+        packaged_names = {path.name.lower() for path in internal_dir.iterdir()}
+        missing = [name for name in REQUIRED_RUNTIME_FILES if name.lower() not in packaged_names]
+
+    if missing:
+        print("GUI 运行时校验失败，缺少以下关键文件:")
+        for name in missing:
+            print(f"  - {name}")
+        return False
+
+    print("GUI 运行时校验通过。")
+    return True
 
 
 def build(use_onefile: bool = False):
@@ -74,6 +115,9 @@ def build(use_onefile: bool = False):
     result = subprocess.run(cmd, cwd=str(PROJECT_ROOT), env=env)
     if result.returncode == 0:
         output_path = DIST_DIR / f"{app_name}.exe" if use_onefile else DIST_DIR / app_name
+        if not validate_gui_runtime(output_path, use_onefile=use_onefile):
+            print("\n构建产物缺少 GUI 运行时文件，请检查 spec 配置。")
+            return False
         print(f"\n构建成功！输出: {output_path}")
         return True
 

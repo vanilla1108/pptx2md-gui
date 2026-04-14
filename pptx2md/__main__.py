@@ -259,7 +259,8 @@ def main():
 
         ok, reason = check_environment(strict=True)
         if not ok:
-            print(f"错误：{reason}", file=sys.stderr)
+            print("错误：", file=sys.stderr)
+            print(reason, file=sys.stderr)
             sys.exit(2)
 
         config = _build_ppt_config(args)
