@@ -17,9 +17,14 @@ PPT/PPTX 转 Markdown 桌面工具，提供 GUI（仅 Windows）与 CLI，基于
 
 ## 预览
 
+### GUI
+
 | 深色主题 | 浅色主题 |
 |:---:|:---:|
 | ![深色主题](.github/assets/gui-dark.png) | ![浅色主题](.github/assets/gui-light.png) |
+
+### 转换效果
+![转换预览](.github\assets\convert.png)
 
 ## 快速开始
 
